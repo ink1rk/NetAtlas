@@ -753,3 +753,23 @@ a:hover { color: var(--na-accent-bright); }
 }
 
 .form-control::placeholder { color: var(--na-text-dim); }
+
+.pill-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.65rem;
+  border: 1px solid var(--na-border);
+  background: var(--na-bg-elevated);
+  color: var(--na-text-muted);
+  font-family: var(--na-font-mono);
+  font-size: 0.75rem;
+}
+.pill-warn { border-color: #c45c26; color: #f0a060; }
+.inline-form { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.inline-form .form-control, .inline-form .form-select { max-width: 200px; }
+.msg-cell { max-width: 42rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.page-intro .subtitle { color: var(--na-text-muted); margin: 0; }
+.btn-sm { padding: 0.2rem 0.55rem; font-size: 0.75rem; }
+.badge-status.problem { background: rgba(196, 92, 38, 0.2); color: #f0a060; }
+.badge-status.ok { background: rgba(0, 201, 167, 0.15); color: #00c9a7; }

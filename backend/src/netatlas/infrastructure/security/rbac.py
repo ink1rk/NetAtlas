@@ -20,6 +20,8 @@ PERMISSIONS: tuple[Permission, ...] = (
     Permission("ipam:read", "Read IPAM"),
     Permission("ipam:write", "Register prefixes in IPAM"),
     Permission("monitoring:read", "Read metrics"),
+    Permission("observability:read", "Read syslog, alerts, SIEM events"),
+    Permission("observability:write", "Manage triggers and notification channels"),
     Permission("export:write", "Export topology/inventory"),
     Permission("credentials:write", "Manage credential profiles"),
     Permission("users:write", "Manage users and roles"),
@@ -36,6 +38,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "snapshots:read",
             "ipam:read",
             "monitoring:read",
+            "observability:read",
             "system:read",
         }
     ),
@@ -49,6 +52,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "ipam:read",
             "ipam:write",
             "monitoring:read",
+            "observability:read",
+            "observability:write",
             "export:write",
             "system:read",
         }

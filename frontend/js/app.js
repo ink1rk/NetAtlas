@@ -7,6 +7,7 @@ const App = (() => {
       { id: 'dashboard', label: 'Dashboard', href: '/pages/dashboard.html', icon: 'grid' },
       { id: 'topology', label: 'Topology', href: '/pages/topology.html', icon: 'share' },
       { id: 'monitoring', label: 'Monitoring', href: '/pages/monitoring.html', icon: 'activity' },
+      { id: 'observability', label: 'Observability', href: '/pages/observability.html', icon: 'shield' },
     ]},
     { section: 'Inventory', items: [
       { id: 'devices', label: 'Devices', href: '/pages/devices.html', icon: 'server' },
@@ -28,6 +29,7 @@ const App = (() => {
     network: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="6"/><rect x="2" y="16" width="6" height="6"/><rect x="16" y="16" width="6" height="6"/><line x1="12" y1="8" x2="5" y2="16"/><line x1="12" y1="8" x2="19" y2="16"/></svg>',
     radar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="12" x2="12" y2="2"/><line x1="12" y1="12" x2="18" y2="18"/></svg>',
     layers: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>',
+    shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
   };
 
   const LOGO_SVG = `<svg class="logo-mark" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -62,7 +64,7 @@ const App = (() => {
 
   function statusBadge(status) {
     const s = (status || 'unknown').toLowerCase();
-    const cls = ['up', 'down', 'running', 'completed', 'failed', 'pending', 'cancelled'].includes(s) ? s : 'unknown';
+    const cls = ['up', 'down', 'running', 'completed', 'failed', 'pending', 'cancelled', 'problem', 'ok'].includes(s) ? s : 'unknown';
     return `<span class="badge-status ${cls}">${escapeHtml(status || 'unknown')}</span>`;
   }
 

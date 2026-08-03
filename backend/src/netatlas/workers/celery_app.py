@@ -29,6 +29,22 @@ celery_app.conf.update(
     task_routes={
         "netatlas.workers.tasks.run_discovery_job": {"queue": "discovery"},
         "netatlas.workers.tasks.collect_metrics": {"queue": "metrics"},
+        "netatlas.workers.tasks.evaluate_triggers": {"queue": "maintenance"},
+        "netatlas.workers.tasks.purge_observability": {"queue": "maintenance"},
+    },
+    beat_schedule={
+        "evaluate-triggers": {
+            "task": "netatlas.workers.tasks.evaluate_triggers",
+            "schedule": float(settings.trigger_eval_interval_seconds),
+        },
+        "collect-metrics": {
+            "task": "netatlas.workers.tasks.collect_metrics",
+            "schedule": float(settings.metrics_interval_seconds),
+        },
+        "purge-observability": {
+            "task": "netatlas.workers.tasks.purge_observability",
+            "schedule": 3600.0,
+        },
     },
 )
 
@@ -45,6 +61,16 @@ def run_discovery_job(job_id: str) -> dict[str, Any]:
 @celery_app.task(name="netatlas.workers.tasks.collect_metrics")
 def collect_metrics() -> dict[str, Any]:
     return asyncio.run(_collect_metrics())
+
+
+@celery_app.task(name="netatlas.workers.tasks.evaluate_triggers")
+def evaluate_triggers() -> dict[str, Any]:
+    return asyncio.run(_evaluate_triggers())
+
+
+@celery_app.task(name="netatlas.workers.tasks.purge_observability")
+def purge_observability() -> dict[str, Any]:
+    return asyncio.run(_purge_observability())
 
 
 async def _run_discovery(job_id: UUID) -> dict[str, Any]:
@@ -122,3 +148,27 @@ async def _collect_metrics() -> dict[str, Any]:
     # Placeholder metrics sweep — real collectors invoked per device in subsequent cycles.
     logger.info("Metrics collection tick")
     return {"status": "ok"}
+
+
+async def _evaluate_triggers() -> dict[str, Any]:
+    from netatlas.infrastructure.observability.smtp_notifier import SmtpNotifier
+    from netatlas.infrastructure.observability.trigger_engine import TriggerEngine
+    from netatlas.infrastructure.persistence.session import SessionLocal
+
+    async with SessionLocal() as session:
+        settings = get_settings()
+        engine = TriggerEngine(session, SmtpNotifier(session, settings))
+        stats = await engine.evaluate_all()
+        await session.commit()
+        logger.info("Trigger evaluation stats=%s", stats)
+        return stats
+
+
+async def _purge_observability() -> dict[str, Any]:
+    from netatlas.infrastructure.observability.ingest import SyslogIngestService
+    from netatlas.infrastructure.persistence.session import SessionLocal
+
+    async with SessionLocal() as session:
+        deleted = await SyslogIngestService(session, get_settings()).purge_expired()
+        await session.commit()
+        return {"deleted_events": deleted}

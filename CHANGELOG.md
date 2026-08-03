@@ -15,8 +15,9 @@ All notable changes to NetAtlas are documented in this file.
 - Topology graph + cable path APIs
 - IPAM prefixes, usage, conflicts
 - Export: JSON, GraphML, SVG, PNG, PDF, Draw.io, Visio VSDX
+- **Onboard Observability**: Syslog UDP/TCP receiver, SMTP notifier, Zabbix-like triggers, partial SIEM correlation
 - Dark offline-first Bootstrap/Cytoscape/Chart.js frontend
-- Docker Compose stack, Nginx TLS, systemd unit, `install.sh`
+- Docker Compose stack (incl. `syslog` service), Nginx TLS, systemd unit, `install.sh`
 - GitHub Actions CI and GHCR image publish
 
 ### Changed

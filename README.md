@@ -23,7 +23,8 @@ See [`docs/architecture/09-TARGET_STACK.md`](docs/architecture/09-TARGET_STACK.m
 ## Features
 
 - Automatic discovery via ICMP, SNMPv2/v3, SSH (allow-listed show/read commands), vendor APIs (UniFi/Proxmox/vSphere), LLDP, FDB, ARP
-- Inventory for Eltex, Mikrotik, UniFi, Proxmox, vSphere/ESXi, Ideco, Kyocera (+ optional Linux/Windows/Docker/Cisco)
+- Stack-first inventory for Eltex, Mikrotik, UniFi, Proxmox, vSphere/ESXi, Ideco, Kyocera
+- Onboard observability: Syslog server, SMTP alerts, Zabbix-like triggers, partial SIEM
 - Interactive topology (Cytoscape) with interface-level links, speed, LACP, VLAN, trunk
 - Cable path visualization between endpoints
 - Immutable snapshots after every discovery + diff

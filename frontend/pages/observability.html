@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Observability — NetAtlas</title>
+  <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+    App.initShell('observability', 'Observability', async (el) => {
+      el.innerHTML = `
+        <div class="page-intro">
+          <p class="subtitle">Onboard syslog · Zabbix-like triggers · SMTP alerts · partial SIEM</p>
+          <div class="pill-row" id="obs-status"></div>
+        </div>
+
+        <div class="panel mt-3">
+          <div class="panel-header"><h3>Triggers</h3></div>
+          <div class="panel-body table-wrap">
+            <table class="table-na">
+              <thead><tr><th>Name</th><th>Kind</th><th>Severity</th><th>Status</th><th>Last value</th><th>Changed</th></tr></thead>
+              <tbody id="triggers-body"><tr><td colspan="6">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel mt-3">
+          <div class="panel-header"><h3>Recent alerts</h3></div>
+          <div class="panel-body table-wrap">
+            <table class="table-na">
+              <thead><tr><th>Type</th><th>Severity</th><th>Message</th><th>Ack</th><th>Time</th><th></th></tr></thead>
+              <tbody id="alerts-body"><tr><td colspan="6">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel mt-3">
+          <div class="panel-header">
+            <h3>Syslog / SIEM events</h3>
+            <form id="event-filter" class="inline-form">
+              <input class="form-control" id="q" placeholder="Search message">
+              <select class="form-select" id="category">
+                <option value="">All categories</option>
+                <option>auth_failure</option>
+                <option>firewall</option>
+                <option>link_down</option>
+                <option>threat</option>
+                <option>syslog</option>
+              </select>
+              <button class="btn-na btn-na-secondary" type="submit">Filter</button>
+            </form>
+          </div>
+          <div class="panel-body table-wrap">
+            <table class="table-na">
+              <thead><tr><th>Time</th><th>Source</th><th>Sev</th><th>Category</th><th>Message</th></tr></thead>
+              <tbody id="events-body"><tr><td colspan="5">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel mt-3">
+          <div class="panel-header"><h3>SIEM correlation hits</h3></div>
+          <div class="panel-body table-wrap">
+            <table class="table-na">
+              <thead><tr><th>Rule</th><th>Title</th><th>Severity</th><th>Source</th><th>Time</th></tr></thead>
+              <tbody id="siem-body"><tr><td colspan="5">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      `;
+
+      async function loadStatus() {
+        const s = await API.get('/observability/status');
+        document.getElementById('obs-status').innerHTML = `
+          <span class="pill">syslog :${App.escapeHtml(String(s.syslog.udp_port))}/udp</span>
+          <span class="pill">${s.smtp_configured ? 'SMTP ready' : 'SMTP not set'}</span>
+          <span class="pill">${s.events_stored} events</span>
+          <span class="pill ${s.triggers_in_problem ? 'pill-warn' : ''}">${s.triggers_in_problem} problems</span>
+        `;
+      }
+
+      async function loadTriggers() {
+        const rows = await API.get('/observability/triggers');
+        const body = document.getElementById('triggers-body');
+        if (!rows.length) { body.innerHTML = '<tr><td colspan="6">No triggers</td></tr>'; return; }
+        body.innerHTML = rows.map(t => `
+          <tr>
+            <td>${App.escapeHtml(t.name)}</td>
+            <td><code>${App.escapeHtml(t.kind)}</code></td>
+            <td>${App.escapeHtml(t.severity)}</td>
+            <td>${App.statusBadge(t.status)}</td>
+            <td><code>${App.escapeHtml(t.last_value || '—')}</code></td>
+            <td>${App.formatDate(t.last_change_at)}</td>
+          </tr>
+        `).join('');
+      }
+
+      async function loadAlerts() {
+        const data = await API.get('/observability/alerts?page_size=30');
+        const body = document.getElementById('alerts-body');
+        if (!data.items.length) { body.innerHTML = '<tr><td colspan="6">No alerts yet</td></tr>'; return; }
+        body.innerHTML = data.items.map(a => `
+          <tr>
+            <td>${App.escapeHtml(a.event_type)}</td>
+            <td>${App.escapeHtml(a.severity)}</td>
+            <td>${App.escapeHtml(a.message)}</td>
+            <td>${a.acknowledged ? 'yes' : 'no'}</td>
+            <td>${App.formatDate(a.created_at)}</td>
+            <td>${a.acknowledged ? '' : `<button class="btn-na btn-na-secondary btn-sm" data-ack="${a.id}">Ack</button>`}</td>
+          </tr>
+        `).join('');
+        body.querySelectorAll('[data-ack]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            await API.post(`/observability/alerts/${btn.dataset.ack}/ack`);
+            loadAlerts();
+          });
+        });
+      }
+
+      async function loadEvents(params = '') {
+        const data = await API.get('/observability/events?' + params);
+        const body = document.getElementById('events-body');
+        if (!data.items.length) { body.innerHTML = '<tr><td colspan="5">No events</td></tr>'; return; }
+        body.innerHTML = data.items.map(e => `
+          <tr>
+            <td>${App.formatDate(e.received_at)}</td>
+            <td>${App.escapeHtml(e.source_ip || e.hostname || '—')}</td>
+            <td>${e.severity ?? '—'}</td>
+            <td>${App.escapeHtml(e.category)}</td>
+            <td class="msg-cell">${App.escapeHtml(e.message)}</td>
+          </tr>
+        `).join('');
+      }
+
+      async function loadSiem() {
+        const data = await API.get('/observability/siem/hits');
+        const body = document.getElementById('siem-body');
+        if (!data.items.length) { body.innerHTML = '<tr><td colspan="5">No correlation hits</td></tr>'; return; }
+        body.innerHTML = data.items.map(h => `
+          <tr>
+            <td>${App.escapeHtml(h.rule_name)}</td>
+            <td>${App.escapeHtml(h.title)}</td>
+            <td>${App.escapeHtml(h.severity)}</td>
+            <td>${App.escapeHtml(h.source_ip || '—')}</td>
+            <td>${App.formatDate(h.created_at)}</td>
+          </tr>
+        `).join('');
+      }
+
+      document.getElementById('event-filter').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const q = document.getElementById('q').value.trim();
+        const category = document.getElementById('category').value;
+        const params = new URLSearchParams();
+        if (q) params.set('q', q);
+        if (category) params.set('category', category);
+        loadEvents(params.toString());
+      });
+
+      await Promise.all([loadStatus(), loadTriggers(), loadAlerts(), loadEvents(), loadSiem()]);
+    });
+  </script>
+</body>
+</html>

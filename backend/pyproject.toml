@@ -49,6 +49,7 @@ dev = [
 [project.scripts]
 netatlas-api = "netatlas.api.main:run"
 netatlas-worker = "netatlas.workers.celery_app:main"
+netatlas-syslog = "netatlas.infrastructure.observability.syslog_server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

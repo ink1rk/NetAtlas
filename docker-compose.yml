@@ -96,6 +96,28 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  syslog:
+    image: ghcr.io/ink1rk/netatlas-api:1.0.0
+    command: ["netatlas-syslog"]
+    env_file:
+      - .env
+    environment:
+      NETATLAS_DATABASE_URL: postgresql+asyncpg://netatlas:${POSTGRES_PASSWORD:-netatlas}@postgres:5432/netatlas
+      NETATLAS_DATABASE_URL_SYNC: postgresql+psycopg://netatlas:${POSTGRES_PASSWORD:-netatlas}@postgres:5432/netatlas
+      NETATLAS_REDIS_URL: redis://redis:6379/0
+      NETATLAS_SYSLOG_UDP_HOST: 0.0.0.0
+      NETATLAS_SYSLOG_UDP_PORT: 514
+      NETATLAS_SYSLOG_TCP_PORT: 514
+    ports:
+      - "${NETATLAS_SYSLOG_UDP_PORT:-514}:514/udp"
+      - "${NETATLAS_SYSLOG_TCP_PORT:-514}:514/tcp"
+    depends_on:
+      api:
+        condition: service_healthy
+    cap_add:
+      - NET_BIND_SERVICE
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend

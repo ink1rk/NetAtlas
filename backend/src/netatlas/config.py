@@ -51,6 +51,23 @@ class Settings(BaseSettings):
     discovery_snmp_timeout: float = 2.0
     metrics_interval_seconds: int = 60
 
+    # Onboard observability
+    syslog_udp_host: str = "0.0.0.0"
+    syslog_udp_port: int = 514
+    syslog_tcp_port: int = 514
+    syslog_retention_days: int = 30
+    alert_retention_days: int = 365
+    trigger_eval_interval_seconds: int = 30
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: SecretStr = Field(default=SecretStr(""))
+    smtp_from: str = "netatlas@localhost"
+    smtp_use_tls: bool = True
+    smtp_use_ssl: bool = False
+    alert_mail_to: str = ""
+    siem_correlation_window_seconds: int = 300
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def split_origins(cls, value: object) -> object:

@@ -12,7 +12,7 @@ from fastapi.responses import ORJSONResponse
 
 from netatlas import __version__
 from netatlas.api.middleware import LoginRateLimitMiddleware, RequestIdMiddleware
-from netatlas.api.routes import auth, devices, topology
+from netatlas.api.routes import auth, devices, observability, topology
 from netatlas.api.routes.ops import (
     credentials_router,
     discovery_router,
@@ -73,6 +73,7 @@ def create_app() -> FastAPI:
     app.include_router(credentials_router, prefix=prefix)
     app.include_router(vmware_router, prefix=prefix)
     app.include_router(docker_router, prefix=prefix)
+    app.include_router(observability.router, prefix=prefix)
     app.add_api_websocket_route(f"{prefix}/ws/discovery/{{job_id}}", discovery_ws)
     return app
 

@@ -8,6 +8,7 @@ from uuid import uuid4
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from netatlas.config import get_settings
 from netatlas.infrastructure.persistence.models import (
@@ -116,4 +117,71 @@ async def startup() -> None:
             admin_role = existing_roles["admin"]
             session.add(UserRoleModel(id=uuid4(), user_id=admin.id, role_id=admin_role.id))
             logger.info("Bootstrap admin user created username=%s", admin.username)
+
+        await _seed_default_triggers(session)
         await session.commit()
+
+
+async def _seed_default_triggers(session: AsyncSession) -> None:
+    from netatlas.infrastructure.persistence.models import TriggerDefinitionModel
+
+    defaults = [
+        {
+            "name": "High CPU",
+            "description": "CPU percent above 90 for 5 minutes",
+            "severity": "high",
+            "kind": "metric_threshold",
+            "expression": {"metric": "cpu_percent", "op": "gt", "threshold": 90, "for_minutes": 5},
+        },
+        {
+            "name": "Interface operationally down",
+            "description": "Admin-up interface with oper-status down",
+            "severity": "average",
+            "kind": "interface_status",
+            "expression": {},
+        },
+        {
+            "name": "Auth failure burst",
+            "description": "SIEM correlation: >=5 auth failures in 5 minutes",
+            "severity": "high",
+            "kind": "siem_correlation",
+            "expression": {"category": "auth_failure", "count": 5, "for_minutes": 5},
+        },
+        {
+            "name": "Syslog critical",
+            "description": "Any syslog severity <= 2 (critical/alert/emergency)",
+            "severity": "disaster",
+            "kind": "syslog_match",
+            "expression": {"min_severity": 2},
+        },
+        {
+            "name": "Firewall deny noise",
+            "description": "Ideco/firewall deny messages",
+            "severity": "warning",
+            "kind": "syslog_match",
+            "expression": {"category": "firewall"},
+            "notify_smtp": False,
+        },
+    ]
+    for item in defaults:
+        exists = (
+            await session.execute(
+                select(TriggerDefinitionModel).where(TriggerDefinitionModel.name == item["name"])
+            )
+        ).scalar_one_or_none()
+        if exists:
+            continue
+        session.add(
+            TriggerDefinitionModel(
+                id=uuid4(),
+                name=item["name"],
+                description=item["description"],
+                enabled=True,
+                severity=item["severity"],
+                kind=item["kind"],
+                expression=item["expression"],
+                notify_smtp=item.get("notify_smtp", True),
+                status="ok",
+            )
+        )
+        logger.info("Seeded default trigger name=%s", item["name"])

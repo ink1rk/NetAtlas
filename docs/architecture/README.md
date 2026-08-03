@@ -14,7 +14,8 @@ This directory is the authoritative design baseline for NetAtlas 1.0 MVP.
 8. [07-SECURITY](07-SECURITY.md)
 9. [08-DEPLOYMENT](08-DEPLOYMENT.md)
 10. [09-TARGET_STACK](09-TARGET_STACK.md)
-11. [OpenAPI](../openapi/openapi.yaml)
-12. [ADRs](../adr/0001-architecture-decisions.md)
+11. [10-OBSERVABILITY](10-OBSERVABILITY.md)
+12. [OpenAPI](../openapi/openapi.yaml)
+13. [ADRs](../adr/0001-architecture-decisions.md)
 
 Implementation must not diverge from these documents without a new ADR.
