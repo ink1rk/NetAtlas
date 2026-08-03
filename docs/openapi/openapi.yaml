@@ -1,0 +1,718 @@
+openapi: 3.1.0
+info:
+  title: NetAtlas API
+  version: 1.0.0
+  description: |
+    Enterprise read-only network discovery, inventory, topology, IPAM, and monitoring API.
+    Device configuration mutations are intentionally unsupported.
+  contact:
+    name: NetAtlas Maintainers
+servers:
+  - url: /api/v1
+    description: Local self-hosted
+tags:
+  - name: auth
+  - name: devices
+  - name: topology
+  - name: discovery
+  - name: snapshots
+  - name: ipam
+  - name: monitoring
+  - name: vmware
+  - name: docker
+  - name: export
+  - name: system
+paths:
+  /healthz:
+    get:
+      tags: [system]
+      summary: Liveness probe
+      operationId: healthz
+      security: []
+      responses:
+        "200":
+          description: Process alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+
+  /readyz:
+    get:
+      tags: [system]
+      summary: Readiness probe
+      operationId: readyz
+      security: []
+      responses:
+        "200":
+          description: Dependencies ready
+        "503":
+          description: Dependency unavailable
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Login
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Tokens issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenPair"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Refresh access token
+      operationId: refresh
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: Rotated tokens
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenPair"
+
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: Current user
+      operationId: me
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+
+  /devices:
+    get:
+      tags: [devices]
+      summary: List devices
+      operationId: listDevices
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: vendor
+          in: query
+          schema: { type: string }
+        - name: platform
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Page of devices
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DevicePage"
+
+  /devices/{device_id}:
+    get:
+      tags: [devices]
+      summary: Device detail
+      operationId: getDevice
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+      responses:
+        "200":
+          description: Device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /devices/{device_id}/interfaces:
+    get:
+      tags: [devices]
+      summary: Device interfaces
+      operationId: listDeviceInterfaces
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+      responses:
+        "200":
+          description: Interfaces
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Interface"
+
+  /search:
+    get:
+      tags: [devices]
+      summary: Unified search
+      operationId: search
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: Search hits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+
+  /topology/graph:
+    get:
+      tags: [topology]
+      summary: Topology graph for visualization
+      operationId: topologyGraph
+      responses:
+        "200":
+          description: Graph
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopologyGraph"
+
+  /topology/cable-path:
+    get:
+      tags: [topology]
+      summary: Cable path between endpoints
+      operationId: cablePath
+      parameters:
+        - name: from_device_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: to_device_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Path
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CablePath"
+
+  /discovery/seeds:
+    get:
+      tags: [discovery]
+      summary: List discovery seeds
+      operationId: listSeeds
+      responses:
+        "200":
+          description: Seeds
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DiscoverySeed"
+    post:
+      tags: [discovery]
+      summary: Create discovery seed
+      operationId: createSeed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DiscoverySeedCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoverySeed"
+
+  /discovery/jobs:
+    get:
+      tags: [discovery]
+      summary: List discovery jobs
+      operationId: listJobs
+      responses:
+        "200":
+          description: Jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DiscoveryJob"
+    post:
+      tags: [discovery]
+      summary: Start discovery job
+      operationId: startJob
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DiscoveryJobCreate"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoveryJob"
+
+  /discovery/jobs/{job_id}:
+    get:
+      tags: [discovery]
+      summary: Job status
+      operationId: getJob
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: Job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoveryJob"
+
+  /snapshots:
+    get:
+      tags: [snapshots]
+      summary: List snapshots
+      operationId: listSnapshots
+      responses:
+        "200":
+          description: Snapshots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Snapshot"
+
+  /snapshots/diff:
+    post:
+      tags: [snapshots]
+      summary: Diff two snapshots
+      operationId: diffSnapshots
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SnapshotDiffRequest"
+      responses:
+        "200":
+          description: Diff report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SnapshotDiffReport"
+
+  /ipam/prefixes:
+    get:
+      tags: [ipam]
+      summary: List IP prefixes
+      operationId: listPrefixes
+      responses:
+        "200":
+          description: Prefixes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IpPrefix"
+    post:
+      tags: [ipam]
+      summary: Register prefix in NetAtlas IPAM
+      operationId: createPrefix
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IpPrefixCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IpPrefix"
+
+  /ipam/prefixes/{prefix_id}/addresses:
+    get:
+      tags: [ipam]
+      summary: Addresses in prefix
+      operationId: listAddresses
+      parameters:
+        - name: prefix_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [used, free, conflict, reserved]
+      responses:
+        "200":
+          description: Addresses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IpAddressPage"
+
+  /export:
+    post:
+      tags: [export]
+      summary: Export topology
+      operationId: exportTopology
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExportRequest"
+      responses:
+        "202":
+          description: Export job accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportJob"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: page_size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    DeviceId:
+      name: device_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    JobId:
+      name: job_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Unauthorized:
+      description: Invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, example: ok }
+        version: { type: string }
+
+    ErrorEnvelope:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            request_id: { type: string }
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string, format: password }
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token: { type: string }
+
+    TokenPair:
+      type: object
+      required: [access_token, refresh_token, token_type]
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        token_type: { type: string, example: bearer }
+        expires_in: { type: integer }
+
+    UserProfile:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        email: { type: string }
+        roles:
+          type: array
+          items: { type: string }
+        permissions:
+          type: array
+          items: { type: string }
+
+    Device:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        hostname: { type: string }
+        vendor: { type: string }
+        model: { type: string }
+        serial: { type: string }
+        firmware: { type: string }
+        os_version: { type: string }
+        management_ip: { type: string }
+        management_mac: { type: string }
+        platform: { type: string }
+        status: { type: string }
+        last_seen_at: { type: string, format: date-time }
+
+    DeviceDetail:
+      allOf:
+        - $ref: "#/components/schemas/Device"
+        - type: object
+          properties:
+            interfaces:
+              type: array
+              items:
+                $ref: "#/components/schemas/Interface"
+            attributes:
+              type: object
+              additionalProperties: true
+
+    DevicePage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Device"
+        total: { type: integer }
+        page: { type: integer }
+        page_size: { type: integer }
+
+    Interface:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        mac: { type: string }
+        mtu: { type: integer }
+        duplex: { type: string }
+        speed_bps: { type: integer, format: int64 }
+        poe_enabled: { type: boolean }
+        admin_status: { type: string }
+        oper_status: { type: string }
+        is_trunk: { type: boolean }
+        native_vlan: { type: integer }
+        lacp_group: { type: string }
+
+    SearchResponse:
+      type: object
+      properties:
+        devices:
+          type: array
+          items:
+            $ref: "#/components/schemas/Device"
+        interfaces:
+          type: array
+          items:
+            $ref: "#/components/schemas/Interface"
+        addresses:
+          type: array
+          items:
+            $ref: "#/components/schemas/IpAddress"
+
+    TopologyGraph:
+      type: object
+      properties:
+        nodes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        edges:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    CablePath:
+      type: object
+      properties:
+        hops:
+          type: array
+          items:
+            type: object
+            properties:
+              device_id: { type: string, format: uuid }
+              hostname: { type: string }
+              interface: { type: string }
+        found: { type: boolean }
+
+    DiscoverySeed:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        target: { type: string }
+        label: { type: string }
+        enabled: { type: boolean }
+
+    DiscoverySeedCreate:
+      type: object
+      required: [target]
+      properties:
+        target: { type: string, description: "IP or CIDR" }
+        label: { type: string }
+        credential_profile_ids:
+          type: array
+          items: { type: string, format: uuid }
+
+    DiscoveryJob:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [pending, running, completed, failed, cancelled]
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+        stats: { type: object, additionalProperties: true }
+        error: { type: string, nullable: true }
+
+    DiscoveryJobCreate:
+      type: object
+      properties:
+        seed_ids:
+          type: array
+          items: { type: string, format: uuid }
+
+    Snapshot:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        created_at: { type: string, format: date-time }
+        checksum: { type: string }
+        summary: { type: object, additionalProperties: true }
+
+    SnapshotDiffRequest:
+      type: object
+      required: [left_id, right_id]
+      properties:
+        left_id: { type: string, format: uuid }
+        right_id: { type: string, format: uuid }
+
+    SnapshotDiffReport:
+      type: object
+      properties:
+        added: { type: array, items: { type: object, additionalProperties: true } }
+        removed: { type: array, items: { type: object, additionalProperties: true } }
+        changed: { type: array, items: { type: object, additionalProperties: true } }
+
+    IpPrefix:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        prefix: { type: string }
+        description: { type: string }
+        status: { type: string }
+        used: { type: integer }
+        free: { type: integer }
+        conflicts: { type: integer }
+
+    IpPrefixCreate:
+      type: object
+      required: [prefix]
+      properties:
+        prefix: { type: string }
+        description: { type: string }
+
+    IpAddress:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        address: { type: string }
+        status: { type: string }
+        mac: { type: string }
+        hostname: { type: string }
+        is_conflict: { type: boolean }
+
+    IpAddressPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/IpAddress"
+        total: { type: integer }
+        page: { type: integer }
+        page_size: { type: integer }
+
+    ExportRequest:
+      type: object
+      required: [format]
+      properties:
+        format:
+          type: string
+          enum: [json, graphml, svg, png, pdf, drawio, vsdx]
+        scope:
+          type: string
+          enum: [topology, inventory, ipam]
+          default: topology
+
+    ExportJob:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string }
+        download_url: { type: string, nullable: true }
+
+security:
+  - bearerAuth: []
