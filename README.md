@@ -4,15 +4,31 @@ Enterprise self-hosted platform for autonomous network discovery, inventory, int
 
 **MVP is strictly read-only.** NetAtlas never modifies device configuration.
 
+## Supported device stack (this deployment)
+
+Primary:
+
+- Eltex (MES/ESR)
+- Mikrotik RouterOS
+- UniFi (Ubiquiti)
+- Proxmox VE
+- VMware vSphere / ESXi
+- Ideco UTM
+- Kyocera printers/MFP
+
+Optional/legacy collectors exist (e.g. Cisco IOS, generic Linux/Windows/Docker) but are not part of the target estate.
+
+See [`docs/architecture/09-TARGET_STACK.md`](docs/architecture/09-TARGET_STACK.md).
+
 ## Features
 
-- Automatic discovery via ICMP, SNMPv2/v3, SSH (allow-listed show/read commands), LLDP/CDP, FDB, ARP
-- Inventory for Cisco IOS, Mikrotik RouterOS, Eltex, Linux, Windows, VMware ESXi, Docker hosts
+- Automatic discovery via ICMP, SNMPv2/v3, SSH (allow-listed show/read commands), vendor APIs (UniFi/Proxmox/vSphere), LLDP, FDB, ARP
+- Inventory for Eltex, Mikrotik, UniFi, Proxmox, vSphere/ESXi, Ideco, Kyocera (+ optional Linux/Windows/Docker/Cisco)
 - Interactive topology (Cytoscape) with interface-level links, speed, LACP, VLAN, trunk
 - Cable path visualization between endpoints
 - Immutable snapshots after every discovery + diff
 - IPAM with used/free/conflict tracking
-- Monitoring metrics (CPU, RAM, temperature, interface counters)
+- Monitoring metrics (CPU, RAM, temperature, interface counters; toner for printers)
 - Export: Draw.io, Visio (VSDX), SVG, PNG, PDF, JSON, GraphML
 - Offline-first UI (no CDN), HTTPS-only edge, JWT + RBAC, AES-256-GCM secrets vault
 

@@ -85,8 +85,20 @@ async def _run_discovery(job_id: UUID) -> dict[str, Any]:
                     creds["snmp"] = payload
                 elif row.protocol == "ssh":
                     creds["ssh"] = payload
-                elif row.protocol == "esxi":
+                elif row.protocol in {"esxi", "vsphere"}:
+                    creds["vsphere"] = payload
                     creds["esxi"] = payload
+                elif row.protocol == "unifi":
+                    creds["unifi"] = payload
+                elif row.protocol == "proxmox":
+                    creds["proxmox"] = payload
+                elif row.protocol == "ideco":
+                    # may contain ssh and/or snmp overlays
+                    if "ssh" in payload:
+                        creds["ssh"] = payload["ssh"]
+                    if "snmp" in payload:
+                        creds["snmp"] = payload["snmp"]
+                    creds["ideco"] = payload
                 elif row.protocol == "docker":
                     creds["docker"] = payload
             return creds

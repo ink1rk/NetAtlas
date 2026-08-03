@@ -8,6 +8,7 @@
 | ADR-0004 | AES-256-GCM credential vault | Accepted |
 | ADR-0005 | Offline-first frontend packaging | Accepted |
 | ADR-0006 | Neighbor fallback LLDP→FDB→ARP | Accepted |
+| ADR-0007 | Primary estate: Eltex/Mikrotik/UniFi/Proxmox/vSphere/Ideco/Kyocera | Accepted |
 
 ## ADR-0001 — Hexagonal Clean Architecture
 
@@ -44,3 +45,9 @@
 **Context:** Incomplete LLDP deployments.  
 **Decision:** Prefer LLDP/CDP; else FDB correlation; else ARP.  
 **Consequences:** Links may have confidence < 1.0; UI must show method/confidence.
+
+## ADR-0007 — Target estate without Cisco
+
+**Context:** Operator network uses Eltex, Mikrotik, UniFi, Proxmox, vSphere, Ideco, Kyocera.  
+**Decision:** Prioritize collectors and docs for that stack; keep Cisco as optional legacy plugin only.  
+**Consequences:** Faster value on real gear; UniFi/Proxmox/vSphere API credentials become first-class vault protocols.

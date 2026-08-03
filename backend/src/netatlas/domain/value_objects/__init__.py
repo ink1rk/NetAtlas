@@ -12,13 +12,18 @@ _MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}([-:])){5}[0-9A-Fa-f]{2}$|^([0-9A-Fa-f]{4
 
 
 class DevicePlatform(StrEnum):
-    CISCO_IOS = "cisco_ios"
-    MIKROTIK = "mikrotik"
     ELTEX = "eltex"
+    MIKROTIK = "mikrotik"
+    UNIFI = "unifi"
+    PROXMOX = "proxmox"
+    VSPHERE = "vsphere"
+    ESXI = "esxi"
+    IDECO = "ideco"
+    KYOCERA = "kyocera"
     LINUX = "linux"
     WINDOWS = "windows"
-    ESXI = "esxi"
     DOCKER_HOST = "docker_host"
+    CISCO_IOS = "cisco_ios"  # optional / not in primary deployment stack
     UNKNOWN = "unknown"
 
 
@@ -55,7 +60,11 @@ class CredentialProtocol(StrEnum):
     SNMP_V2C = "snmp_v2c"
     SNMP_V3 = "snmp_v3"
     SSH = "ssh"
+    UNIFI = "unifi"
+    PROXMOX = "proxmox"
+    VSPHERE = "vsphere"
     ESXI = "esxi"
+    IDECO = "ideco"
     DOCKER = "docker"
 
 

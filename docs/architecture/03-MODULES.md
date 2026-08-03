@@ -63,16 +63,18 @@ Use cases:
 ### `infrastructure.collectors`
 | Plugin | Platforms | Transports |
 |--------|-----------|------------|
-| `cisco_ios` | Cisco IOS | SNMP, SSH (show-only) |
-| `mikrotik` | RouterOS | SNMP, SSH/API read |
-| `eltex` | Eltex | SNMP, SSH |
-| `linux` | Linux | SNMP, SSH |
-| `windows` | Windows | SNMP, WMI-read via SSH when available |
-| `esxi` | VMware ESXi | HTTPS API read |
-| `docker_host` | Docker | Docker API unix/tcp read |
+| `eltex` | Eltex MES/ESR | SNMP, SSH show-only, LLDP, FDB |
+| `mikrotik` | RouterOS | SNMP, SSH read, neighbor/ARP/bridge |
+| `unifi` | UniFi gateway/switch/AP | Controller API GET, SNMP |
+| `proxmox` | Proxmox VE | API token read, SSH `pvesh`, SNMP |
+| `vsphere` | vSphere / ESXi | HTTPS read API, SNMP |
+| `ideco` | Ideco UTM | SNMP, SSH read, ARP |
+| `kyocera` | Kyocera printers | Printer-MIB SNMP |
+| `linux` / `windows` / `docker_host` | helpers | SSH/SNMP/API |
+| `cisco_ios` | optional legacy | SNMP, SSH show-only |
 | `generic_snmp` | fallback | SNMP |
 
-Discovery fallback chain for neighbors: **LLDP/CDP → FDB → ARP**.
+Discovery fallback chain for neighbors: **LLDP → FDB → ARP**.
 
 ### `infrastructure.persistence`
 SQLAlchemy 2 mapped models, Alembic migrations, repository adapters, unit-of-work.

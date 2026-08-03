@@ -488,7 +488,9 @@ async def vmware_hosts(
     _user: Annotated[Any, Depends(require_permission("inventory:read"))],
 ) -> list[dict[str, Any]]:
     rows = (
-        await session.execute(select(DeviceModel).where(DeviceModel.platform == "esxi"))
+        await session.execute(
+            select(DeviceModel).where(DeviceModel.platform.in_(("esxi", "vsphere")))
+        )
     ).scalars().all()
     return [
         {
@@ -496,6 +498,8 @@ async def vmware_hosts(
             "hostname": d.hostname,
             "management_ip": str(d.management_ip) if d.management_ip else None,
             "os_version": d.os_version,
+            "platform": d.platform,
+            "attributes": d.attributes,
         }
         for d in rows
     ]
@@ -518,6 +522,30 @@ async def docker_hosts(
         }
         for d in rows
     ]
+
+
+@system_router.get("/stack/platforms")
+async def stack_platforms(
+    _user: Annotated[Any, Depends(require_permission("system:read"))] = None,
+) -> dict[str, Any]:
+    """Return the primary supported estate for UI badges/filters."""
+    return {
+        "primary": [
+            {"id": "eltex", "vendor": "Eltex", "roles": ["switch", "router"]},
+            {"id": "mikrotik", "vendor": "Mikrotik", "roles": ["router", "wireless", "cpe"]},
+            {"id": "unifi", "vendor": "Ubiquiti UniFi", "roles": ["wifi", "switch", "gateway"]},
+            {"id": "proxmox", "vendor": "Proxmox VE", "roles": ["hypervisor"]},
+            {"id": "vsphere", "vendor": "VMware vSphere/ESXi", "roles": ["hypervisor"]},
+            {"id": "ideco", "vendor": "Ideco", "roles": ["firewall", "utm"]},
+            {"id": "kyocera", "vendor": "Kyocera", "roles": ["printer"]},
+        ],
+        "optional": [
+            {"id": "linux", "vendor": "Linux"},
+            {"id": "windows", "vendor": "Windows"},
+            {"id": "docker_host", "vendor": "Docker"},
+            {"id": "cisco_ios", "vendor": "Cisco IOS (legacy)"},
+        ],
+    }
 
 
 async def discovery_ws(websocket: WebSocket, job_id: str) -> None:

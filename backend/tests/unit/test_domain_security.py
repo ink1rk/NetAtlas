@@ -124,12 +124,75 @@ def test_snmp_set_blocked() -> None:
         guard.assert_allowed("set")
 
 
-def test_collector_registry_resolves_cisco() -> None:
+def test_collector_registry_resolves_stack() -> None:
     from netatlas.domain.ports import DeviceFingerprint
-    from netatlas.infrastructure.collectors.base.registry import build_default_registry
+    from netatlas.infrastructure.collectors.base.registry import build_default_registry, fingerprint_platform
+    from netatlas.domain.value_objects import DevicePlatform
 
     registry = build_default_registry()
-    plugin = registry.resolve(
-        DeviceFingerprint(management_ip="10.0.0.1", sys_descr="Cisco IOS Software, C9300")
+    vendors = [p.vendor for p in registry.all()]
+    assert vendors[0:7] == [
+        "eltex",
+        "mikrotik",
+        "ubiquiti",
+        "proxmox",
+        "vmware",
+        "ideco",
+        "kyocera",
+    ]
+
+    assert (
+        registry.resolve(
+            DeviceFingerprint(management_ip="10.0.0.1", sys_descr="Eltex MES3324F")
+        ).vendor
+        == "eltex"
     )
-    assert plugin.vendor == "cisco"
+    assert (
+        registry.resolve(
+            DeviceFingerprint(management_ip="10.0.0.2", sys_descr="RouterOS 7.14 Mikrotik")
+        ).vendor
+        == "mikrotik"
+    )
+    assert (
+        registry.resolve(
+            DeviceFingerprint(management_ip="10.0.0.3", sys_descr="UniFi Dream Machine")
+        ).vendor
+        == "ubiquiti"
+    )
+    assert (
+        registry.resolve(
+            DeviceFingerprint(management_ip="10.0.0.4", sys_descr="Proxmox VE")
+        ).vendor
+        == "proxmox"
+    )
+    assert (
+        registry.resolve(
+            DeviceFingerprint(management_ip="10.0.0.5", sys_descr="VMware ESXi 8.0")
+        ).vendor
+        == "vmware"
+    )
+    assert (
+        registry.resolve(
+            DeviceFingerprint(management_ip="10.0.0.6", sys_descr="Ideco ICS-UTM")
+        ).vendor
+        == "ideco"
+    )
+    assert (
+        registry.resolve(
+            DeviceFingerprint(management_ip="10.0.0.7", sys_descr="KYOCERA Document Solutions ECOSYS")
+        ).vendor
+        == "kyocera"
+    )
+    assert fingerprint_platform(
+        DeviceFingerprint(management_ip="1.1.1.1", sys_descr="Eltex MES")
+    ) == DevicePlatform.ELTEX
+
+
+def test_eltex_ssh_allowlist() -> None:
+    from netatlas.infrastructure.security.readonly_guard import ReadOnlyCommandGuard
+
+    guard = ReadOnlyCommandGuard()
+    guard.assert_allowed("show lldp neighbors detail", platform="eltex")
+    guard.assert_allowed("pvesh get /nodes --output-format json", platform="proxmox")
+    guard.assert_allowed("ip -j neigh", platform="ideco")
+
