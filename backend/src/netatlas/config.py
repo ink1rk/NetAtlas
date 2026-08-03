@@ -60,6 +60,13 @@ class Settings(BaseSettings):
             return [part.strip() for part in value.split(",") if part.strip()]
         return value
 
+    @field_validator("jwt_private_key_pem", "jwt_public_key_pem", mode="before")
+    @classmethod
+    def unescape_pem(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.replace("\\n", "\n").strip()
+        return value
+
 
 @lru_cache
 def get_settings() -> Settings:
