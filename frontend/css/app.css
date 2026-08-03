@@ -773,3 +773,4 @@ a:hover { color: var(--na-accent-bright); }
 .btn-sm { padding: 0.2rem 0.55rem; font-size: 0.75rem; }
 .badge-status.problem { background: rgba(196, 92, 38, 0.2); color: #f0a060; }
 .badge-status.ok { background: rgba(0, 201, 167, 0.15); color: #00c9a7; }
+.pill-dim { opacity: 0.45; }

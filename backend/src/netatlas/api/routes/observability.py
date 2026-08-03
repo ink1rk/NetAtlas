@@ -33,6 +33,8 @@ class TriggerCreate(BaseModel):
     expression: dict[str, Any] = Field(default_factory=dict)
     recovery_expression: dict[str, Any] | None = None
     notify_smtp: bool = True
+    notify_telegram: bool = True
+    notify_element: bool = True
     device_id: UUID | None = None
 
 
@@ -43,6 +45,8 @@ class TriggerUpdate(BaseModel):
     expression: dict[str, Any] | None = None
     recovery_expression: dict[str, Any] | None = None
     notify_smtp: bool | None = None
+    notify_telegram: bool | None = None
+    notify_element: bool | None = None
 
 
 @router.get("/events")
@@ -119,6 +123,8 @@ async def create_trigger(
         expression=body.expression,
         recovery_expression=body.recovery_expression,
         notify_smtp=body.notify_smtp,
+        notify_telegram=body.notify_telegram,
+        notify_element=body.notify_element,
         device_id=body.device_id,
         status="ok",
     )
@@ -286,6 +292,8 @@ async def observability_status(
     settings: Annotated[Settings, Depends(get_settings)],
     _user: Annotated[Any, Depends(require_permission("observability:read"))],
 ) -> dict[str, Any]:
+    from netatlas.infrastructure.observability.dispatcher import NotificationDispatcher
+
     events = int((await session.execute(select(func.count()).select_from(ObservabilityEventModel))).scalar_one())
     problems = int(
         (
@@ -296,13 +304,19 @@ async def observability_status(
             )
         ).scalar_one()
     )
+    channels = NotificationDispatcher(session, settings).channel_status()
     return {
         "syslog": {
             "udp_port": settings.syslog_udp_port,
             "tcp_port": settings.syslog_tcp_port,
+            "tls_enabled": settings.syslog_tls_enable,
+            "tls_port": settings.syslog_tls_port if settings.syslog_tls_enable else None,
             "retention_days": settings.syslog_retention_days,
         },
-        "smtp_configured": bool(settings.smtp_host and settings.alert_mail_to),
+        "channels": channels,
+        "smtp_configured": channels["smtp"],
+        "telegram_configured": channels["telegram"],
+        "element_configured": channels["element"],
         "events_stored": events,
         "triggers_in_problem": problems,
     }
@@ -336,6 +350,8 @@ def _trigger_dict(r: TriggerDefinitionModel) -> dict[str, Any]:
         "expression": r.expression,
         "recovery_expression": r.recovery_expression,
         "notify_smtp": r.notify_smtp,
+        "notify_telegram": getattr(r, "notify_telegram", True),
+        "notify_element": getattr(r, "notify_element", True),
         "status": r.status,
         "last_change_at": r.last_change_at.isoformat() if r.last_change_at else None,
         "last_value": r.last_value,

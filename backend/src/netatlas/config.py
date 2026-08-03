@@ -68,6 +68,23 @@ class Settings(BaseSettings):
     alert_mail_to: str = ""
     siem_correlation_window_seconds: int = 300
 
+    # Telegram (Bot API — optionally self-hosted Bot API via telegram_api_base)
+    telegram_bot_token: SecretStr = Field(default=SecretStr(""))
+    telegram_chat_ids: str = ""  # comma-separated
+    telegram_api_base: str = "https://api.telegram.org"
+
+    # Element / Matrix (prefer self-hosted Synapse/Dendrite homeserver)
+    element_homeserver: str = ""  # e.g. https://matrix.company.local
+    element_access_token: SecretStr = Field(default=SecretStr(""))
+    element_room_ids: str = ""  # comma-separated !room:server
+    element_verify_tls: bool = True
+
+    # TLS syslog (RFC5425-style)
+    syslog_tls_enable: bool = False
+    syslog_tls_port: int = 6514
+    syslog_tls_cert_file: str = "/etc/nginx/certs/fullchain.pem"
+    syslog_tls_key_file: str = "/etc/nginx/certs/privkey.pem"
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def split_origins(cls, value: object) -> object:

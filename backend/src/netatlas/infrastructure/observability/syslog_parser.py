@@ -105,23 +105,83 @@ def parse_syslog(raw: str, *, received_at: datetime | None = None) -> ParsedSysl
     )
 
 
-def categorize_message(message: str, *, severity: int, app_name: str | None) -> tuple[str, list[str]]:
-    """Lightweight SIEM categorization."""
+def categorize_message(
+    message: str,
+    *,
+    severity: int,
+    app_name: str | None,
+    hostname: str | None = None,
+) -> tuple[str, list[str]]:
+    """Lightweight SIEM categorization with Ideco/Eltex/Mikrotik/UniFi hints."""
     lower = message.lower()
+    host = (hostname or "").lower()
+    app = (app_name or "").lower()
     tags: list[str] = []
     category = "syslog"
+
+    # Vendor hints from hostname / app
+    if any(x in host for x in ("ideco", "utm", "fw")) or "ideco" in app:
+        tags.append("vendor:ideco")
+    if any(x in host for x in ("mes", "eltex", "esr")) or "eltex" in app:
+        tags.append("vendor:eltex")
+    if "mikrotik" in host or "routeros" in app or host.startswith("mt-"):
+        tags.append("vendor:mikrotik")
+    if any(x in host for x in ("unifi", "udm", "usw", "uap")):
+        tags.append("vendor:unifi")
+
     rules = [
-        (("failed password", "authentication failure", "invalid user", "login failed"), "auth_failure", ["auth", "security"]),
-        (("accepted password", "session opened", "login success"), "auth_success", ["auth"]),
-        (("link down", "interface down", "went down", "oper-status down"), "link_down", ["network"]),
-        (("link up", "interface up", "went up"), "link_up", ["network"]),
-        (("bgp", "ospf", "neighbor down"), "routing", ["network"]),
-        (("firewall", "deny", "drop packet", "blocked"), "firewall", ["security"]),
-        (("virus", "malware", "ids", "ips alert"), "threat", ["security", "ids"]),
+        (
+            (
+                "failed password",
+                "authentication failure",
+                "invalid user",
+                "login failed",
+                "auth fail",
+                "неверн",  # Ideco RU
+                "ошибка аутентификации",
+            ),
+            "auth_failure",
+            ["auth", "security"],
+        ),
+        (("accepted password", "session opened", "login success", "успешн"), "auth_success", ["auth"]),
+        (
+            (
+                "link down",
+                "interface down",
+                "went down",
+                "oper-status down",
+                "changed state to down",
+                "link-3-updown",
+                "%link-3-updown",
+            ),
+            "link_down",
+            ["network"],
+        ),
+        (("link up", "interface up", "went up", "changed state to up"), "link_up", ["network"]),
+        (("bgp", "ospf", "neighbor down", "adjacency"), "routing", ["network"]),
+        (
+            (
+                "firewall",
+                "deny",
+                "drop packet",
+                "blocked",
+                "drop:",
+                "reject",
+                "ids/ips",
+                "запрещ",
+                "блокир",
+            ),
+            "firewall",
+            ["security"],
+        ),
+        (("virus", "malware", "ids", "ips alert", "intrusion"), "threat", ["security", "ids"]),
         (("disk", "filesystem", "inode"), "storage", ["system"]),
-        (("cpu", "memory", "oom", "load average"), "resource", ["system"]),
+        (("cpu", "memory", "oom", "load average", "high temperature"), "resource", ["system"]),
         (("dhcp", "lease"), "dhcp", ["network"]),
-        (("vpn", "ipsec", "wireguard", "openvpn"), "vpn", ["network", "security"]),
+        (("vpn", "ipsec", "wireguard", "openvpn", "l2tp", "sstp"), "vpn", ["network", "security"]),
+        (("stp", "topology change", "root bridge"), "stp", ["network"]),
+        (("poe", "power inline"), "poe", ["network"]),
+        (("config", "configuration changed", "configure"), "config_change", ["audit"]),
     ]
     for needles, cat, t in rules:
         if any(n in lower for n in needles):
@@ -134,7 +194,6 @@ def categorize_message(message: str, *, severity: int, app_name: str | None) -> 
         tags.append("error")
     if app_name:
         tags.append(f"app:{app_name.lower()}")
-    # dedupe preserve order
     seen: set[str] = set()
     uniq = []
     for tag in tags:

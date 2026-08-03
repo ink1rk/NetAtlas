@@ -108,9 +108,16 @@ services:
       NETATLAS_SYSLOG_UDP_HOST: 0.0.0.0
       NETATLAS_SYSLOG_UDP_PORT: 514
       NETATLAS_SYSLOG_TCP_PORT: 514
+      NETATLAS_SYSLOG_TLS_ENABLE: ${NETATLAS_SYSLOG_TLS_ENABLE:-false}
+      NETATLAS_SYSLOG_TLS_PORT: 6514
+      NETATLAS_SYSLOG_TLS_CERT_FILE: /certs/fullchain.pem
+      NETATLAS_SYSLOG_TLS_KEY_FILE: /certs/privkey.pem
     ports:
       - "${NETATLAS_SYSLOG_UDP_PORT:-514}:514/udp"
       - "${NETATLAS_SYSLOG_TCP_PORT:-514}:514/tcp"
+      - "${NETATLAS_SYSLOG_TLS_PORT:-6514}:6514/tcp"
+    volumes:
+      - ${NETATLAS_TLS_DIR:-./deploy/certs}:/certs:ro
     depends_on:
       api:
         condition: service_healthy

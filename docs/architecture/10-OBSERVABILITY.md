@@ -54,6 +54,34 @@ Outbound only in v1:
 - Templates for PROBLEM / OK / security  
 - Rate-limit digests to avoid storms  
 
+## Telegram
+
+- Bot API via `NETATLAS_TELEGRAM_BOT_TOKEN` + `NETATLAS_TELEGRAM_CHAT_IDS`  
+- Optional self-hosted Bot API: `NETATLAS_TELEGRAM_API_BASE`  
+- Requires network egress to Telegram unless local Bot API is used  
+
+## Element (Matrix)
+
+- Prefer self-hosted Synapse/Dendrite: `NETATLAS_ELEMENT_HOMESERVER`  
+- Access token + room IDs (`!room:server`)  
+- Sends `m.room.message` / `m.text`  
+- Fully workable offline if Matrix is local  
+
+## Notification fan-out
+
+Each trigger can enable independently:
+
+- `notify_smtp`  
+- `notify_telegram`  
+- `notify_element`  
+
+Dispatcher records every attempt in `alert_notifications`.
+
+## TLS Syslog
+
+Optional RFC5425-style TLS listener on `:6514` (`NETATLAS_SYSLOG_TLS_ENABLE=true`).
+Uses the same certs as the installer’s TLS material.
+
 ## Data retention
 
 - Raw syslog: configurable TTL (default 30 days)  

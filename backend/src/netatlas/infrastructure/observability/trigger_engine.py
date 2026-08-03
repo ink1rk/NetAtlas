@@ -19,13 +19,13 @@ from netatlas.infrastructure.persistence.models import (
     TriggerDefinitionModel,
     TriggerEventModel,
 )
-from netatlas.infrastructure.observability.smtp_notifier import SmtpNotifier
+from netatlas.infrastructure.observability.dispatcher import NotificationDispatcher
 
 logger = logging.getLogger(__name__)
 
 
 class TriggerEngine:
-    def __init__(self, session: AsyncSession, notifier: SmtpNotifier | None = None) -> None:
+    def __init__(self, session: AsyncSession, notifier: NotificationDispatcher | None = None) -> None:
         self._session = session
         self._notifier = notifier
 
@@ -201,7 +201,11 @@ class TriggerEngine:
         )
         self._session.add(te)
         await self._session.flush()
-        if trigger.notify_smtp and self._notifier:
+        if self._notifier and (
+            getattr(trigger, "notify_smtp", False)
+            or getattr(trigger, "notify_telegram", False)
+            or getattr(trigger, "notify_element", False)
+        ):
             await self._notifier.notify_trigger(trigger, te)
         logger.info("Trigger %s -> %s (%s)", trigger.name, event_type, message)
         return event_type

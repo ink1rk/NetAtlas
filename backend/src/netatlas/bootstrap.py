@@ -155,12 +155,43 @@ async def _seed_default_triggers(session: AsyncSession) -> None:
             "expression": {"min_severity": 2},
         },
         {
-            "name": "Firewall deny noise",
-            "description": "Ideco/firewall deny messages",
+            "name": "Ideco firewall deny",
+            "description": "Ideco UTM firewall deny/block (category=firewall)",
             "severity": "warning",
             "kind": "syslog_match",
             "expression": {"category": "firewall"},
+            "notify_smtp": True,
+            "notify_telegram": True,
+            "notify_element": True,
+        },
+        {
+            "name": "Ideco VPN event",
+            "description": "VPN up/down or auth on Ideco edge",
+            "severity": "average",
+            "kind": "syslog_match",
+            "expression": {"category": "vpn"},
+        },
+        {
+            "name": "Eltex link down",
+            "description": "Eltex MES/ESR interface link-down syslog",
+            "severity": "high",
+            "kind": "syslog_match",
+            "expression": {"category": "link_down", "regex": r"(?i)(interface|gi|te|fa|link).*(down)|LINK-3-UPDOWN"},
+        },
+        {
+            "name": "Eltex STP topology change",
+            "description": "Spanning-tree topology change on Eltex",
+            "severity": "warning",
+            "kind": "syslog_match",
+            "expression": {"category": "stp"},
             "notify_smtp": False,
+        },
+        {
+            "name": "Config change audit",
+            "description": "Possible configuration change in syslog",
+            "severity": "average",
+            "kind": "syslog_match",
+            "expression": {"category": "config_change"},
         },
     ]
     for item in defaults:
@@ -181,6 +212,8 @@ async def _seed_default_triggers(session: AsyncSession) -> None:
                 kind=item["kind"],
                 expression=item["expression"],
                 notify_smtp=item.get("notify_smtp", True),
+                notify_telegram=item.get("notify_telegram", True),
+                notify_element=item.get("notify_element", True),
                 status="ok",
             )
         )

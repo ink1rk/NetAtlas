@@ -151,13 +151,13 @@ async def _collect_metrics() -> dict[str, Any]:
 
 
 async def _evaluate_triggers() -> dict[str, Any]:
-    from netatlas.infrastructure.observability.smtp_notifier import SmtpNotifier
+    from netatlas.infrastructure.observability.dispatcher import NotificationDispatcher
     from netatlas.infrastructure.observability.trigger_engine import TriggerEngine
     from netatlas.infrastructure.persistence.session import SessionLocal
 
     async with SessionLocal() as session:
         settings = get_settings()
-        engine = TriggerEngine(session, SmtpNotifier(session, settings))
+        engine = TriggerEngine(session, NotificationDispatcher(session, settings))
         stats = await engine.evaluate_all()
         await session.commit()
         logger.info("Trigger evaluation stats=%s", stats)

@@ -35,7 +35,12 @@ class SyslogIngestService:
     ) -> ObservabilityEventModel:
         received = received_at or datetime.now(UTC)
         parsed = parse_syslog(raw, received_at=received)
-        category, tags = categorize_message(parsed.message, severity=parsed.severity, app_name=parsed.app_name)
+        category, tags = categorize_message(
+            parsed.message,
+            severity=parsed.severity,
+            app_name=parsed.app_name,
+            hostname=parsed.hostname,
+        )
         device_id = await self._resolve_device(source_ip, parsed.hostname)
         event = ObservabilityEventModel(
             id=uuid4(),

@@ -79,7 +79,10 @@
         const s = await API.get('/observability/status');
         document.getElementById('obs-status').innerHTML = `
           <span class="pill">syslog :${App.escapeHtml(String(s.syslog.udp_port))}/udp</span>
-          <span class="pill">${s.smtp_configured ? 'SMTP ready' : 'SMTP not set'}</span>
+          ${s.syslog.tls_enabled ? `<span class="pill">syslog-tls :${App.escapeHtml(String(s.syslog.tls_port))}</span>` : ''}
+          <span class="pill ${s.channels?.smtp ? '' : 'pill-dim'}">SMTP ${s.channels?.smtp ? 'on' : 'off'}</span>
+          <span class="pill ${s.channels?.telegram ? '' : 'pill-dim'}">Telegram ${s.channels?.telegram ? 'on' : 'off'}</span>
+          <span class="pill ${s.channels?.element ? '' : 'pill-dim'}">Element ${s.channels?.element ? 'on' : 'off'}</span>
           <span class="pill">${s.events_stored} events</span>
           <span class="pill ${s.triggers_in_problem ? 'pill-warn' : ''}">${s.triggers_in_problem} problems</span>
         `;

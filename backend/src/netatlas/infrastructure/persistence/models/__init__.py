@@ -479,6 +479,8 @@ class TriggerDefinitionModel(Base, TimestampMixin):
     expression: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     recovery_expression: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     notify_smtp: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    notify_telegram: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    notify_element: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="ok")  # ok|problem
     last_change_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_value: Mapped[str | None] = mapped_column(Text)
