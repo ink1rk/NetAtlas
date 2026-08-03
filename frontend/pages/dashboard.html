@@ -9,10 +9,10 @@
 </head>
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-  <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
+  <script src="/static/vendor/cytoscape/cytoscape.min.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/auth.js"></script>
-  <script src="/js/charts.js"></script>
+  <script src="/js/topology.js"></script>
   <script src="/js/app.js"></script>
   <script>
     App.initShell('dashboard', 'Dashboard', async (el) => {
@@ -20,81 +20,64 @@
         <div class="stat-grid" id="dash-stats">
           <div class="stat-block accent"><div class="stat-value">—</div><div class="stat-label">Devices</div></div>
           <div class="stat-block"><div class="stat-value">—</div><div class="stat-label">Links</div></div>
-          <div class="stat-block warning"><div class="stat-value">—</div><div class="stat-label">Discovery Jobs</div></div>
-          <div class="stat-block danger"><div class="stat-value">—</div><div class="stat-label">IP Conflicts</div></div>
+          <div class="stat-block"><div class="stat-value">—</div><div class="stat-label">Prefixes</div></div>
+          <div class="stat-block danger"><div class="stat-value">—</div><div class="stat-label">Alerts</div></div>
         </div>
-        <div class="row g-3">
-          <div class="col-lg-8">
-            <div class="panel">
-              <div class="panel-header"><h3>Device Status Distribution</h3></div>
-              <div class="panel-body"><div class="chart-wrap"><canvas id="status-chart"></canvas></div></div>
-            </div>
+
+        <div class="panel panel-map">
+          <div class="panel-header">
+            <h3>Live Network Map</h3>
+            <a href="/pages/topology.html" class="btn-na btn-na-secondary">Full screen</a>
           </div>
-          <div class="col-lg-4">
-            <div class="panel">
-              <div class="panel-header"><h3>Platform Mix</h3></div>
-              <div class="panel-body"><div class="chart-wrap"><canvas id="platform-chart"></canvas></div></div>
-            </div>
+          <div class="panel-body">
+            <div id="dash-map" class="dash-map-container"></div>
           </div>
         </div>
-        <div class="panel mt-3">
-          <div class="panel-header"><h3>Recent Devices</h3><a href="/pages/devices.html" class="btn-na">View all</a></div>
-          <div class="panel-body p-0" id="recent-devices"><p class="empty-state">Loading…</p></div>
+
+        <div class="health-strip" id="health-strip">
+          <span class="health-item">Loading health status…</span>
         </div>
       `;
 
+      Topology.init('dash-map', { compact: true });
+
       try {
-        const [devices, graph, jobs, conflicts] = await Promise.all([
-          Api.listDevices({ page_size: 50 }),
+        const [devices, graph, prefixes, obsStatus, alerts] = await Promise.all([
+          Api.listDevices({ page_size: 1 }),
           Api.topologyGraph(),
-          Api.listJobs(),
-          Api.listConflicts().catch(() => []),
+          Api.listPrefixes().catch(() => []),
+          Api.get('/observability/status').catch(() => null),
+          Api.get('/observability/alerts', { page_size: 1 }).catch(() => null),
         ]);
 
         const stats = el.querySelector('#dash-stats');
         stats.children[0].querySelector('.stat-value').textContent = devices.total ?? devices.items?.length ?? 0;
         stats.children[1].querySelector('.stat-value').textContent = (graph.edges || []).length;
-        stats.children[2].querySelector('.stat-value').textContent = (jobs || []).filter(j => j.status === 'running').length;
-        stats.children[3].querySelector('.stat-value').textContent = Array.isArray(conflicts) ? conflicts.length : 0;
+        stats.children[2].querySelector('.stat-value').textContent = Array.isArray(prefixes) ? prefixes.length : 0;
 
-        const statusCounts = {};
-        const platformCounts = {};
-        (devices.items || []).forEach((d) => {
-          const st = d.status || 'unknown';
-          statusCounts[st] = (statusCounts[st] || 0) + 1;
-          const pl = d.platform || d.vendor || 'other';
-          platformCounts[pl] = (platformCounts[pl] || 0) + 1;
-        });
+        const alertCount = alerts?.total ?? obsStatus?.triggers_in_problem ?? 0;
+        const alertBlock = stats.children[3];
+        alertBlock.querySelector('.stat-value').textContent = alertCount;
+        alertBlock.classList.toggle('danger', alertCount > 0);
+        alertBlock.classList.toggle('accent', alertCount === 0);
 
-        Charts.doughnutChart('status-chart',
-          Object.keys(statusCounts),
-          Object.values(statusCounts),
-          [Charts.COLORS.accent, Charts.COLORS.info, Charts.COLORS.warning, Charts.COLORS.danger, Charts.COLORS.muted]
-        );
+        const strip = el.querySelector('#health-strip');
+        const problems = obsStatus?.triggers_in_problem ?? 0;
+        const events = obsStatus?.events_stored ?? 0;
+        const syslogPort = obsStatus?.syslog?.udp_port;
 
-        Charts.barChart('platform-chart',
-          Object.keys(platformCounts),
-          [{ label: 'Devices', data: Object.values(platformCounts), backgroundColor: Charts.COLORS.accentDim, borderColor: Charts.COLORS.accent, borderWidth: 1 }],
-          { indexAxis: 'y', plugins: { legend: { display: false } } }
-        );
-
-        const recent = el.querySelector('#recent-devices');
-        if (!devices.items?.length) {
-          recent.innerHTML = '<p class="empty-state">No devices discovered yet.</p>';
-        } else {
-          recent.innerHTML = `<table class="data-table"><thead><tr>
-            <th>Hostname</th><th>Vendor</th><th>Platform</th><th>Management IP</th><th>Status</th><th>Last Seen</th>
-          </tr></thead><tbody>${devices.items.slice(0, 10).map(d => `<tr>
-            <td><a href="/pages/device-detail.html?id=${d.id}">${App.escapeHtml(d.hostname)}</a></td>
-            <td>${App.escapeHtml(d.vendor)}</td>
-            <td class="mono">${App.escapeHtml(d.platform)}</td>
-            <td class="mono">${App.escapeHtml(d.management_ip)}</td>
-            <td>${App.statusBadge(d.status)}</td>
-            <td>${App.formatDate(d.last_seen_at)}</td>
-          </tr>`).join('')}</tbody></table>`;
-        }
+        strip.innerHTML = `
+          <span class="health-item ${problems > 0 ? 'health-problems' : 'health-ok'}">
+            <strong>${problems}</strong> trigger problem${problems === 1 ? '' : 's'}
+          </span>
+          <span class="health-item"><strong>${events}</strong> syslog events stored</span>
+          ${syslogPort ? `<span class="health-item">Syslog UDP <span class="mono">:${App.escapeHtml(String(syslogPort))}</span></span>` : ''}
+          <span class="health-item"><strong>${(graph.nodes || []).length}</strong> nodes mapped</span>
+          <a href="/pages/observability.html" class="btn-na btn-na-secondary btn-sm">Observability</a>
+        `;
       } catch (err) {
-        App.showError(el, err.message);
+        const strip = el.querySelector('#health-strip');
+        if (strip) strip.innerHTML = `<span class="health-item" style="color:var(--na-critical)">${App.escapeHtml(err.message)}</span>`;
       }
     });
   </script>

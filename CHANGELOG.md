@@ -17,6 +17,7 @@ All notable changes to NetAtlas are documented in this file.
 - Export: JSON, GraphML, SVG, PNG, PDF, Draw.io, Visio VSDX
 - **Onboard Observability**: Syslog UDP/TCP/TLS, SMTP + Telegram + Element alerts, Zabbix-like triggers, partial SIEM
 - Ideco/Eltex-oriented default syslog trigger pack
+- Visual design system (`design/`): Cyber Blue atlas theme, Inter + JetBrains Mono, topology role colors, logo/mesh assets
 - Dark offline-first Bootstrap/Cytoscape/Chart.js frontend
 - Docker Compose stack (incl. `syslog` service), Nginx TLS, systemd unit, `install.sh`
 - GitHub Actions CI and GHCR image publish

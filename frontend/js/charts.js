@@ -3,16 +3,20 @@
  */
 const Charts = (() => {
   const COLORS = {
-    accent: '#00c9a7',
-    accentDim: 'rgba(0, 201, 167, 0.15)',
-    info: '#3b9eff',
-    infoDim: 'rgba(59, 158, 255, 0.15)',
-    warning: '#f0a030',
-    warningDim: 'rgba(240, 160, 48, 0.15)',
-    danger: '#f05252',
-    muted: '#7d8fa6',
-    grid: '#2a384c',
-    text: '#7d8fa6',
+    accent: '#00B8FF',
+    accentDim: 'rgba(0, 184, 255, 0.15)',
+    info: '#3B82F6',
+    infoDim: 'rgba(59, 130, 246, 0.15)',
+    warning: '#FFB300',
+    warningDim: 'rgba(255, 179, 0, 0.15)',
+    danger: '#FF3D71',
+    dangerDim: 'rgba(255, 61, 113, 0.15)',
+    success: '#00E676',
+    successDim: 'rgba(0, 230, 118, 0.15)',
+    muted: '#94A3B8',
+    grid: '#1E293B',
+    text: '#94A3B8',
+    card: '#111827',
   };
 
   const defaults = {
@@ -20,7 +24,7 @@ const Charts = (() => {
     maintainAspectRatio: false,
     plugins: {
       legend: {
-        labels: { color: COLORS.text, font: { family: "'IBM Plex Sans'" } },
+        labels: { color: COLORS.text, font: { family: "'Inter'" } },
       },
     },
     scales: {
@@ -57,7 +61,9 @@ const Charts = (() => {
   function doughnutChart(canvas, labels, data, colors) {
     const ctx = typeof canvas === 'string' ? document.getElementById(canvas) : canvas;
     if (!ctx) return null;
-    const palette = colors || [COLORS.accent, COLORS.info, COLORS.warning, COLORS.danger, COLORS.muted];
+    const palette = colors || [
+      COLORS.accent, COLORS.success, COLORS.warning, COLORS.danger, COLORS.muted,
+    ];
     const chart = new Chart(ctx, {
       type: 'doughnut',
       data: {
@@ -65,7 +71,7 @@ const Charts = (() => {
         datasets: [{
           data,
           backgroundColor: palette,
-          borderColor: '#141c27',
+          borderColor: COLORS.card,
           borderWidth: 2,
         }],
       },
@@ -75,7 +81,7 @@ const Charts = (() => {
         plugins: {
           legend: {
             position: 'right',
-            labels: { color: COLORS.text, font: { family: "'IBM Plex Sans'" }, padding: 12 },
+            labels: { color: COLORS.text, font: { family: "'Inter'" }, padding: 12 },
           },
         },
       },

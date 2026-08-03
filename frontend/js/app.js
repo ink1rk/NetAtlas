@@ -32,16 +32,7 @@ const App = (() => {
     shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
   };
 
-  const LOGO_SVG = `<svg class="logo-mark" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect width="56" height="56" rx="10" fill="#141c27"/>
-    <path d="M14 28 L22 20 L30 28 L38 20 L42 24" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-    <circle cx="22" cy="20" r="3" fill="#00c9a7"/>
-    <circle cx="30" cy="28" r="3" fill="#3b9eff"/>
-    <circle cx="38" cy="20" r="3" fill="#00c9a7"/>
-    <circle cx="14" cy="28" r="3" fill="#3b9eff"/>
-    <circle cx="42" cy="36" r="3" fill="#00c9a7"/>
-    <line x1="42" y1="24" x2="42" y2="33" stroke="#00c9a7" stroke-width="2"/>
-  </svg>`;
+  const LOGO_SVG = '<img src="/static/brand/netatlas-mark.svg" alt="NetAtlas" class="logo-mark">';
 
   function escapeHtml(str) {
     if (str == null) return '';

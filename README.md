@@ -62,6 +62,10 @@ Health: `/api/v1/healthz` · Ready: `/api/v1/readyz`
 
 See [`docs/architecture/`](docs/architecture/README.md).
 
+## Design system
+
+Visual source of truth: [`design/`](design/README.md) (colors, logo, mesh background, frontend guidelines).
+
 ## Security
 
 See [`SECURITY.md`](SECURITY.md). Rotate any credentials that were ever pasted into chat or tickets.

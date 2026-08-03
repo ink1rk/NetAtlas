@@ -16,13 +16,14 @@
   <script src="/js/app.js"></script>
   <script>
     App.initShell('topology', 'Topology Map', (el) => {
+      el.classList.add('app-main--topology');
       el.innerHTML = `
         <div class="topology-toolbar">
-          <button class="btn-na" id="btn-fit">Fit view</button>
-          <button class="btn-na" id="btn-relayout">Re-layout</button>
-          <button class="btn-na" id="btn-refresh">Refresh</button>
+          <button class="btn-na btn-na-secondary" id="btn-fit">Fit view</button>
+          <button class="btn-na btn-na-secondary" id="btn-relayout">Re-layout</button>
+          <button class="btn-na btn-na-secondary" id="btn-refresh">Refresh</button>
         </div>
-        <div id="topology-cy" class="topology-container"></div>
+        <div id="topology-cy" class="topology-container topology-container--full"></div>
       `;
 
       Topology.init('topology-cy');
