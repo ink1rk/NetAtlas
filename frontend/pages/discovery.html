@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Discovery — NetAtlas</title>
+  <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+    App.initShell('discovery', 'Network Discovery', (el) => {
+      el.innerHTML = `
+        <div class="row g-3">
+          <div class="col-lg-5">
+            <div class="panel">
+              <div class="panel-header"><h3>Discovery Seeds</h3></div>
+              <div class="panel-body">
+                <form id="seed-form" class="form-na mb-3">
+                  <div class="mb-2">
+                    <label>Target (IP or CIDR)</label>
+                    <input type="text" id="seed-target" class="form-control" placeholder="10.0.0.0/24" required>
+                  </div>
+                  <div class="mb-2">
+                    <label>Label</label>
+                    <input type="text" id="seed-label" class="form-control" placeholder="Core network">
+                  </div>
+                  <button type="submit" class="btn-na btn-na-primary">Add Seed</button>
+                </form>
+                <div id="seeds-list"><p class="empty-state">Loading…</p></div>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-7">
+            <div class="panel">
+              <div class="panel-header">
+                <h3>Discovery Jobs</h3>
+                <button class="btn-na btn-na-primary" id="btn-start-job">Start Job</button>
+              </div>
+              <div class="panel-body p-0" id="jobs-list"><p class="empty-state">Loading…</p></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('seed-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          await Api.createSeed({
+            target: document.getElementById('seed-target').value.trim(),
+            label: document.getElementById('seed-label').value.trim() || undefined,
+          });
+          document.getElementById('seed-form').reset();
+          loadSeeds();
+        } catch (err) { alert(err.message); }
+      });
+
+      document.getElementById('btn-start-job').addEventListener('click', async () => {
+        try {
+          await Api.startJob({});
+          loadJobs();
+        } catch (err) { alert(err.message); }
+      });
+
+      loadSeeds();
+      loadJobs();
+      setInterval(loadJobs, 10000);
+    });
+
+    async function loadSeeds() {
+      const el = document.getElementById('seeds-list');
+      try {
+        const seeds = await Api.listSeeds();
+        if (!seeds?.length) { el.innerHTML = '<p class="empty-state">No seeds configured.</p>'; return; }
+        el.innerHTML = seeds.map(s => `
+          <div class="d-flex justify-content-between align-items-center py-2 border-bottom" style="border-color:var(--na-border-subtle)!important">
+            <div>
+              <div class="mono">${App.escapeHtml(s.target)}</div>
+              <small class="text-muted">${App.escapeHtml(s.label || '')}</small>
+            </div>
+            <button class="btn-na btn-na-danger btn-sm" onclick="deleteSeed('${s.id}')">Remove</button>
+          </div>
+        `).join('');
+      } catch (err) { el.innerHTML = `<div class="alert-na error">${App.escapeHtml(err.message)}</div>`; }
+    }
+
+    async function deleteSeed(id) {
+      if (!confirm('Remove this seed?')) return;
+      try { await Api.deleteSeed(id); loadSeeds(); } catch (err) { alert(err.message); }
+    }
+
+    async function loadJobs() {
+      const el = document.getElementById('jobs-list');
+      try {
+        const jobs = await Api.listJobs();
+        if (!jobs?.length) { el.innerHTML = '<p class="empty-state">No discovery jobs yet.</p>'; return; }
+        el.innerHTML = `<table class="data-table"><thead><tr>
+          <th>ID</th><th>Status</th><th>Started</th><th>Finished</th><th>Stats</th>
+        </tr></thead><tbody>${jobs.map(j => `<tr>
+          <td class="mono">${App.escapeHtml(j.id?.slice(0, 8))}…</td>
+          <td>${App.statusBadge(j.status)}</td>
+          <td>${App.formatDate(j.started_at)}</td>
+          <td>${App.formatDate(j.finished_at)}</td>
+          <td class="mono">${j.stats ? JSON.stringify(j.stats) : '—'}</td>
+        </tr>`).join('')}</tbody></table>`;
+      } catch (err) { el.innerHTML = `<div class="alert-na error m-3">${App.escapeHtml(err.message)}</div>`; }
+    }
+  </script>
+</body>
+</html>

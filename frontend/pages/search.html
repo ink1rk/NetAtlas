@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Search — NetAtlas</title>
+  <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+    App.initShell('search', 'Unified Search', (el) => {
+      el.innerHTML = `
+        <div class="panel mb-3">
+          <div class="panel-body">
+            <form id="search-form" class="d-flex gap-2">
+              <input type="text" id="search-q" class="form-control form-na" placeholder="Search devices, interfaces, IP addresses…" autofocus>
+              <button type="submit" class="btn-na btn-na-primary">Search</button>
+            </form>
+          </div>
+        </div>
+        <div id="search-results"><p class="empty-state">Enter a query to search across inventory.</p></div>
+      `;
+
+      const q = App.queryParam('q');
+      if (q) {
+        document.getElementById('search-q').value = q;
+        runSearch(q);
+      }
+
+      document.getElementById('search-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const query = document.getElementById('search-q').value.trim();
+        if (query) {
+          history.replaceState(null, '', `?q=${encodeURIComponent(query)}`);
+          runSearch(query);
+        }
+      });
+    });
+
+    async function runSearch(q) {
+      const el = document.getElementById('search-results');
+      el.innerHTML = '<p class="empty-state">Searching…</p>';
+      try {
+        const data = await Api.search(q);
+        const devices = data.devices || [];
+        const interfaces = data.interfaces || [];
+        const addresses = data.addresses || [];
+        const total = devices.length + interfaces.length + addresses.length;
+
+        if (!total) {
+          el.innerHTML = `<p class="empty-state">No results for "<strong>${App.escapeHtml(q)}</strong>".</p>`;
+          return;
+        }
+
+        el.innerHTML = `
+          <p class="text-muted mb-3">${total} result${total !== 1 ? 's' : ''} for "<strong>${App.escapeHtml(q)}</strong>"</p>
+          ${devices.length ? `<div class="search-hit-group panel mb-3"><div class="panel-header"><h3>Devices (${devices.length})</h3></div><div class="panel-body p-0">
+            ${devices.map(d => `<a href="/pages/device-detail.html?id=${d.id}" class="search-hit d-block text-decoration-none">
+              <div><strong>${App.escapeHtml(d.hostname)}</strong> <span class="mono text-muted">${App.escapeHtml(d.management_ip)}</span></div>
+              <span class="text-muted">${App.escapeHtml(d.vendor)} · ${App.escapeHtml(d.platform)}</span>
+            </a>`).join('')}
+          </div></div>` : ''}
+          ${interfaces.length ? `<div class="search-hit-group panel mb-3"><div class="panel-header"><h3>Interfaces (${interfaces.length})</h3></div><div class="panel-body p-0">
+            ${interfaces.map(i => `<div class="search-hit">
+              <div><span class="mono"><strong>${App.escapeHtml(i.name)}</strong></span> ${App.escapeHtml(i.description || '')}</div>
+              <span class="mono text-muted">${App.escapeHtml(i.mac)}</span>
+            </div>`).join('')}
+          </div></div>` : ''}
+          ${addresses.length ? `<div class="search-hit-group panel mb-3"><div class="panel-header"><h3>Addresses (${addresses.length})</h3></div><div class="panel-body p-0">
+            ${addresses.map(a => `<div class="search-hit">
+              <div class="mono"><strong>${App.escapeHtml(a.address)}</strong> ${App.escapeHtml(a.hostname || '')}</div>
+              <span class="text-muted">${App.statusBadge(a.status)} ${a.is_conflict ? '· conflict' : ''}</span>
+            </div>`).join('')}
+          </div></div>` : ''}
+        `;
+      } catch (err) {
+        el.innerHTML = `<div class="alert-na error">${App.escapeHtml(err.message)}</div>`;
+      }
+    }
+  </script>
+</body>
+</html>

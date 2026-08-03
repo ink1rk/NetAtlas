@@ -1,0 +1,215 @@
+"""Shared SNMP inventory helpers used by collectors."""
+
+from __future__ import annotations
+
+from typing import Any, Awaitable, Callable
+
+from netatlas.domain.ports import (
+    ArpEntry,
+    CollectorContext,
+    FdbEntry,
+    InventoryFacts,
+    MetricsSample,
+    NeighborFact,
+)
+from netatlas.domain.value_objects import DevicePlatform
+from netatlas.infrastructure.collectors.base.registry import fingerprint_platform
+
+SNMP_SYS_DESCR = "1.3.6.1.2.1.1.1.0"
+SNMP_SYS_OBJECT_ID = "1.3.6.1.2.1.1.2.0"
+SNMP_SYS_UPTIME = "1.3.6.1.2.1.1.3.0"
+SNMP_SYS_NAME = "1.3.6.1.2.1.1.5.0"
+SNMP_IF_NAME = "1.3.6.1.2.1.31.1.1.1.1"
+SNMP_IF_DESCR = "1.3.6.1.2.1.2.2.1.2"
+SNMP_IF_MTU = "1.3.6.1.2.1.2.2.1.4"
+SNMP_IF_SPEED = "1.3.6.1.2.1.2.2.1.5"
+SNMP_IF_PHYS = "1.3.6.1.2.1.2.2.1.6"
+SNMP_IF_ADMIN = "1.3.6.1.2.1.2.2.1.7"
+SNMP_IF_OPER = "1.3.6.1.2.1.2.2.1.8"
+SNMP_LLDP_REM_SYS_NAME = "1.0.8802.1.1.2.1.4.1.1.9"
+SNMP_LLDP_REM_PORT_ID = "1.0.8802.1.1.2.1.4.1.1.7"
+SNMP_FDB_ADDRESS = "1.3.6.1.2.1.17.4.3.1.1"
+SNMP_FDB_PORT = "1.3.6.1.2.1.17.4.3.1.2"
+SNMP_IP_NET_TO_MEDIA_PHYS = "1.3.6.1.2.1.4.22.1.2"
+SNMP_ENTITY_SERIAL = "1.3.6.1.2.1.47.1.1.1.1.11.1"
+SNMP_ENTITY_MODEL = "1.3.6.1.2.1.47.1.1.1.1.13.1"
+SNMP_ENTITY_FW = "1.3.6.1.2.1.47.1.1.1.1.10.1"
+
+
+SnmpGet = Callable[..., Awaitable[str | None]]
+SnmpWalk = Callable[..., Awaitable[list[tuple[str, str]]]]
+
+
+def _cred_snmp(ctx: CollectorContext) -> dict[str, Any]:
+    snmp = ctx.credentials.get("snmp", {})
+    return {
+        "community": snmp.get("community", "public"),
+        "version": int(snmp.get("version", 2)),
+        "timeout": ctx.timeouts.get("snmp", 2.0),
+        "username": snmp.get("username"),
+        "auth_key": snmp.get("auth_key"),
+        "priv_key": snmp.get("priv_key"),
+    }
+
+
+async def snmp_inventory(ctx: CollectorContext, *, vendor_hint: str = "unknown") -> InventoryFacts:
+    assert ctx.snmp_get and ctx.snmp_walk
+    params = _cred_snmp(ctx)
+    sys_name = await ctx.snmp_get(ctx.target_ip, SNMP_SYS_NAME, **params) or ctx.target_ip
+    sys_descr = await ctx.snmp_get(ctx.target_ip, SNMP_SYS_DESCR, **params) or ""
+    sys_oid = await ctx.snmp_get(ctx.target_ip, SNMP_SYS_OBJECT_ID, **params)
+    uptime_ticks = await ctx.snmp_get(ctx.target_ip, SNMP_SYS_UPTIME, **params)
+    serial = await ctx.snmp_get(ctx.target_ip, SNMP_ENTITY_SERIAL, **params)
+    model = await ctx.snmp_get(ctx.target_ip, SNMP_ENTITY_MODEL, **params) or "unknown"
+    firmware = await ctx.snmp_get(ctx.target_ip, SNMP_ENTITY_FW, **params)
+
+    names = {oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, SNMP_IF_NAME, **params)}
+    descrs = {oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, SNMP_IF_DESCR, **params)}
+    mtus = {oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, SNMP_IF_MTU, **params)}
+    speeds = {oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, SNMP_IF_SPEED, **params)}
+    macs = {oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, SNMP_IF_PHYS, **params)}
+    admins = {oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, SNMP_IF_ADMIN, **params)}
+    opers = {oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, SNMP_IF_OPER, **params)}
+
+    interfaces: list[dict[str, Any]] = []
+    for idx, name in names.items():
+        try:
+            speed = int(speeds.get(idx) or 0)
+        except ValueError:
+            speed = 0
+        try:
+            mtu = int(mtus.get(idx) or 0) or None
+        except ValueError:
+            mtu = None
+        interfaces.append(
+            {
+                "name": name,
+                "if_index": idx,
+                "description": descrs.get(idx),
+                "mac": _normalize_mac(macs.get(idx)),
+                "mtu": mtu,
+                "speed_bps": speed or None,
+                "admin_status": _if_status(admins.get(idx)),
+                "oper_status": _if_status(opers.get(idx)),
+                "duplex": None,
+                "poe_enabled": False,
+                "is_trunk": False,
+                "native_vlan": None,
+                "lacp_group": None,
+            }
+        )
+
+    from netatlas.domain.ports import DeviceFingerprint
+
+    platform = fingerprint_platform(
+        DeviceFingerprint(
+            management_ip=ctx.target_ip,
+            sys_descr=sys_descr,
+            sys_object_id=sys_oid,
+        )
+    )
+    uptime_seconds = None
+    if uptime_ticks and uptime_ticks.isdigit():
+        uptime_seconds = int(uptime_ticks) // 100
+
+    return InventoryFacts(
+        hostname=sys_name,
+        vendor=vendor_hint if vendor_hint != "unknown" else platform.value,
+        model=model,
+        serial=serial,
+        firmware=firmware,
+        os_version=sys_descr[:255] if sys_descr else None,
+        management_mac=None,
+        platform=platform if platform != DevicePlatform.UNKNOWN else DevicePlatform.UNKNOWN,
+        attributes={"sys_object_id": sys_oid, "sys_descr": sys_descr},
+        interfaces=interfaces,
+        uptime_seconds=uptime_seconds,
+    )
+
+
+async def snmp_neighbors(ctx: CollectorContext) -> list[NeighborFact]:
+    assert ctx.snmp_walk
+    params = _cred_snmp(ctx)
+    names = dict(await ctx.snmp_walk(ctx.target_ip, SNMP_LLDP_REM_SYS_NAME, **params))
+    ports = dict(await ctx.snmp_walk(ctx.target_ip, SNMP_LLDP_REM_PORT_ID, **params))
+    facts: list[NeighborFact] = []
+    for oid, remote_name in names.items():
+        # OID index: ...localIfIndex.remoteIndex
+        parts = oid.split(".")
+        local_if = parts[-2] if len(parts) >= 2 else "?"
+        facts.append(
+            NeighborFact(
+                local_interface=local_if,
+                remote_hostname=remote_name,
+                remote_interface=ports.get(oid),
+                remote_chassis_id=None,
+                remote_mgmt_ip=None,
+                protocol="lldp",
+            )
+        )
+    return facts
+
+
+async def snmp_fdb(ctx: CollectorContext) -> list[FdbEntry]:
+    assert ctx.snmp_walk
+    params = _cred_snmp(ctx)
+    macs = dict(await ctx.snmp_walk(ctx.target_ip, SNMP_FDB_ADDRESS, **params))
+    ports = dict(await ctx.snmp_walk(ctx.target_ip, SNMP_FDB_PORT, **params))
+    entries: list[FdbEntry] = []
+    for oid, mac in macs.items():
+        entries.append(
+            FdbEntry(
+                mac=_normalize_mac(mac) or str(mac),
+                vlan_id=None,
+                interface=str(ports.get(oid) or "?"),
+            )
+        )
+    return entries
+
+
+async def snmp_arp(ctx: CollectorContext) -> list[ArpEntry]:
+    assert ctx.snmp_walk
+    params = _cred_snmp(ctx)
+    rows = await ctx.snmp_walk(ctx.target_ip, SNMP_IP_NET_TO_MEDIA_PHYS, **params)
+    entries: list[ArpEntry] = []
+    for oid, mac in rows:
+        # ...ipNetToMediaIfIndex.ipNetToMediaNetAddress
+        parts = oid.split(".")
+        if len(parts) < 5:
+            continue
+        ip = ".".join(parts[-4:])
+        iface = parts[-5]
+        entries.append(ArpEntry(ip=ip, mac=_normalize_mac(mac) or str(mac), interface=iface))
+    return entries
+
+
+async def snmp_metrics(ctx: CollectorContext) -> MetricsSample:
+    # Host-resources CPU/memory OIDs when available
+    assert ctx.snmp_get
+    params = _cred_snmp(ctx)
+    cpu = await ctx.snmp_get(ctx.target_ip, "1.3.6.1.2.1.25.3.3.1.2.1", **params)
+    try:
+        cpu_percent = float(cpu) if cpu else None
+    except ValueError:
+        cpu_percent = None
+    return MetricsSample(cpu_percent=cpu_percent)
+
+
+def _if_status(raw: str | None) -> str:
+    if raw == "1":
+        return "up"
+    if raw == "2":
+        return "down"
+    return "unknown"
+
+
+def _normalize_mac(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    cleaned = raw.strip().lower().replace(" ", ":").replace("-", ":")
+    if cleaned.startswith("0x"):
+        cleaned = cleaned[2:]
+    hex_only = cleaned.replace(":", "")
+    if len(hex_only) == 12 and all(c in "0123456789abcdef" for c in hex_only):
+        return ":".join(hex_only[i : i + 2] for i in range(0, 12, 2))
+    return None

@@ -1,0 +1,112 @@
+"""Celery application and tasks."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from typing import Any
+from uuid import UUID
+
+from celery import Celery
+
+from netatlas.config import get_settings
+
+logger = logging.getLogger(__name__)
+settings = get_settings()
+
+celery_app = Celery(
+    "netatlas",
+    broker=settings.rabbitmq_url,
+    backend=settings.redis_url,
+)
+celery_app.conf.update(
+    task_serializer="json",
+    accept_content=["json"],
+    result_serializer="json",
+    timezone="UTC",
+    enable_utc=True,
+    task_routes={
+        "netatlas.workers.tasks.run_discovery_job": {"queue": "discovery"},
+        "netatlas.workers.tasks.collect_metrics": {"queue": "metrics"},
+    },
+)
+
+
+def main() -> None:
+    celery_app.start()
+
+
+@celery_app.task(name="netatlas.workers.tasks.run_discovery_job")
+def run_discovery_job(job_id: str) -> dict[str, Any]:
+    return asyncio.run(_run_discovery(UUID(job_id)))
+
+
+@celery_app.task(name="netatlas.workers.tasks.collect_metrics")
+def collect_metrics() -> dict[str, Any]:
+    return asyncio.run(_collect_metrics())
+
+
+async def _run_discovery(job_id: UUID) -> dict[str, Any]:
+    from netatlas.application.use_cases.discovery import DiscoveryOrchestrator
+    from netatlas.infrastructure.collectors.base.registry import build_default_registry
+    from netatlas.infrastructure.persistence.models import CredentialProfileModel
+    from netatlas.infrastructure.persistence.repositories import (
+        SqlAlchemyDeviceRepository,
+        SqlAlchemyDiscoveryJobRepository,
+        SqlAlchemyDiscoverySeedRepository,
+        SqlAlchemyInterfaceRepository,
+        SqlAlchemyLinkRepository,
+        SqlAlchemySnapshotRepository,
+    )
+    from netatlas.infrastructure.persistence.session import SessionLocal
+    from netatlas.infrastructure.security.vault import AesGcmSecretVault
+    from sqlalchemy import select
+
+    async with SessionLocal() as session:
+        vault = AesGcmSecretVault(get_settings().master_key_b64.get_secret_value())
+
+        async def credential_loader(seeds: list[Any]) -> dict[str, Any]:
+            creds: dict[str, Any] = {"snmp": {"community": "public", "version": 2}}
+            profile_ids: list[UUID] = []
+            for seed in seeds:
+                profile_ids.extend(seed.credential_profile_ids)
+            if not profile_ids:
+                return creds
+            rows = (
+                await session.execute(
+                    select(CredentialProfileModel).where(CredentialProfileModel.id.in_(profile_ids))
+                )
+            ).scalars().all()
+            for row in rows:
+                plaintext = vault.decrypt(row.ciphertext, row.nonce, key_version=row.key_version)
+                payload = json.loads(plaintext.decode("utf-8"))
+                if row.protocol.startswith("snmp"):
+                    creds["snmp"] = payload
+                elif row.protocol == "ssh":
+                    creds["ssh"] = payload
+                elif row.protocol == "esxi":
+                    creds["esxi"] = payload
+                elif row.protocol == "docker":
+                    creds["docker"] = payload
+            return creds
+
+        orch = DiscoveryOrchestrator(
+            jobs=SqlAlchemyDiscoveryJobRepository(session),
+            seeds=SqlAlchemyDiscoverySeedRepository(session),
+            devices=SqlAlchemyDeviceRepository(session),
+            interfaces=SqlAlchemyInterfaceRepository(session),
+            links=SqlAlchemyLinkRepository(session),
+            snapshots=SqlAlchemySnapshotRepository(session),
+            registry=build_default_registry(),
+            credential_loader=credential_loader,
+        )
+        job = await orch.run(job_id)
+        await session.commit()
+        return {"id": str(job.id), "status": job.status.value, "stats": job.stats}
+
+
+async def _collect_metrics() -> dict[str, Any]:
+    # Placeholder metrics sweep — real collectors invoked per device in subsequent cycles.
+    logger.info("Metrics collection tick")
+    return {"status": "ok"}

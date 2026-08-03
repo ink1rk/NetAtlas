@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "netatlas"
+version = "1.0.0"
+description = "Enterprise read-only network discovery, inventory, topology, IPAM, and monitoring"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [{ name = "NetAtlas" }]
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.32.0",
+  "pydantic>=2.9.0",
+  "pydantic-settings>=2.6.0",
+  "sqlalchemy[asyncio]>=2.0.36",
+  "asyncpg>=0.30.0",
+  "alembic>=1.14.0",
+  "psycopg[binary]>=3.2.0",
+  "celery[redis]>=5.4.0",
+  "redis>=5.2.0",
+  "httpx>=0.28.0",
+  "cryptography>=44.0.0",
+  "argon2-cffi>=23.1.0",
+  "PyJWT[crypto]>=2.10.0",
+  "python-multipart>=0.0.17",
+  "structlog>=24.4.0",
+  "orjson>=3.10.0",
+  "icmplib>=3.0.4",
+  "asyncssh>=2.18.0",
+  "pysnmp-lextudio>=5.0.34",
+  "websockets>=14.0",
+  "email-validator>=2.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.0",
+  "pytest-asyncio>=0.24.0",
+  "pytest-cov>=6.0.0",
+  "httpx>=0.28.0",
+  "ruff>=0.8.0",
+  "mypy>=1.13.0",
+  "aiosqlite>=0.20.0",
+]
+
+[project.scripts]
+netatlas-api = "netatlas.api.main:run"
+netatlas-worker = "netatlas.workers.celery_app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["netatlas"]

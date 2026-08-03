@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snapshots — NetAtlas</title>
+  <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+    App.initShell('snapshots', 'Snapshots & Diff', (el) => {
+      el.innerHTML = `
+        <div class="panel mb-3">
+          <div class="panel-header"><h3>Snapshot Archive</h3></div>
+          <div class="panel-body p-0" id="snapshots-list"><p class="empty-state">Loading…</p></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><h3>Compare Snapshots</h3></div>
+          <div class="panel-body">
+            <div class="row g-3 mb-3">
+              <div class="col-md-5">
+                <label class="form-na"><span>Left snapshot</span>
+                  <select id="diff-left" class="form-select"></select>
+                </label>
+              </div>
+              <div class="col-md-5">
+                <label class="form-na"><span>Right snapshot</span>
+                  <select id="diff-right" class="form-select"></select>
+                </label>
+              </div>
+              <div class="col-md-2 d-flex align-items-end">
+                <button class="btn-na btn-na-primary w-100" id="btn-diff">Compare</button>
+              </div>
+            </div>
+            <div id="diff-result"></div>
+          </div>
+        </div>
+      `;
+
+      loadSnapshots();
+      document.getElementById('btn-diff').addEventListener('click', runDiff);
+    });
+
+    let snapshots = [];
+
+    async function loadSnapshots() {
+      const el = document.getElementById('snapshots-list');
+      try {
+        snapshots = await Api.listSnapshots();
+        const leftSel = document.getElementById('diff-left');
+        const rightSel = document.getElementById('diff-right');
+        const opts = snapshots.map(s =>
+          `<option value="${s.id}">${App.escapeHtml(s.label || s.id?.slice(0, 8))} — ${App.formatDate(s.created_at)}</option>`
+        ).join('');
+        leftSel.innerHTML = opts;
+        rightSel.innerHTML = opts;
+
+        if (!snapshots.length) {
+          el.innerHTML = '<p class="empty-state">No snapshots captured yet.</p>';
+          return;
+        }
+
+        el.innerHTML = `<table class="data-table"><thead><tr>
+          <th>Label</th><th>Created</th><th>Checksum</th><th>Summary</th>
+        </tr></thead><tbody>${snapshots.map(s => `<tr>
+          <td><strong>${App.escapeHtml(s.label)}</strong></td>
+          <td>${App.formatDate(s.created_at)}</td>
+          <td class="mono">${App.escapeHtml(s.checksum?.slice(0, 12))}…</td>
+          <td class="mono">${s.summary ? JSON.stringify(s.summary) : '—'}</td>
+        </tr>`).join('')}</tbody></table>`;
+      } catch (err) { el.innerHTML = `<div class="alert-na error m-3">${App.escapeHtml(err.message)}</div>`; }
+    }
+
+    async function runDiff() {
+      const result = document.getElementById('diff-result');
+      const left = document.getElementById('diff-left').value;
+      const right = document.getElementById('diff-right').value;
+      if (!left || !right) { alert('Select two snapshots'); return; }
+      result.innerHTML = '<p class="empty-state">Computing diff…</p>';
+      try {
+        const diff = await Api.diffSnapshots(left, right);
+        result.innerHTML = `<div class="diff-columns">
+          <div class="diff-col added">
+            <h4>Added (${(diff.added || []).length})</h4>
+            ${(diff.added || []).map(i => `<div class="diff-item">${App.escapeHtml(JSON.stringify(i))}</div>`).join('') || '<p class="text-muted">None</p>'}
+          </div>
+          <div class="diff-col removed">
+            <h4>Removed (${(diff.removed || []).length})</h4>
+            ${(diff.removed || []).map(i => `<div class="diff-item">${App.escapeHtml(JSON.stringify(i))}</div>`).join('') || '<p class="text-muted">None</p>'}
+          </div>
+          <div class="diff-col changed">
+            <h4>Changed (${(diff.changed || []).length})</h4>
+            ${(diff.changed || []).map(i => `<div class="diff-item">${App.escapeHtml(JSON.stringify(i))}</div>`).join('') || '<p class="text-muted">None</p>'}
+          </div>
+        </div>`;
+      } catch (err) {
+        result.innerHTML = `<div class="alert-na error">${App.escapeHtml(err.message)}</div>`;
+      }
+    }
+  </script>
+</body>
+</html>

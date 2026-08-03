@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Devices — NetAtlas</title>
+  <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+    let page = 1;
+    const pageSize = 50;
+
+    App.initShell('devices', 'Device Inventory', (el) => {
+      el.innerHTML = `
+        <div class="panel">
+          <div class="panel-header">
+            <h3>All Devices</h3>
+            <div class="d-flex gap-2">
+              <input type="text" id="filter-q" class="form-control form-control-sm" placeholder="Search hostname…" style="width:200px">
+              <input type="text" id="filter-vendor" class="form-control form-control-sm" placeholder="Vendor" style="width:120px">
+              <button class="btn-na" id="btn-filter">Filter</button>
+            </div>
+          </div>
+          <div id="devices-table" class="panel-body p-0"><p class="empty-state">Loading…</p></div>
+        </div>
+      `;
+
+      document.getElementById('btn-filter').addEventListener('click', () => { page = 1; loadDevices(el); });
+      document.getElementById('filter-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') { page = 1; loadDevices(el); } });
+      loadDevices(el);
+    });
+
+    async function loadDevices(el) {
+      const container = document.getElementById('devices-table');
+      try {
+        const data = await Api.listDevices({
+          page,
+          page_size: pageSize,
+          q: document.getElementById('filter-q')?.value || undefined,
+          vendor: document.getElementById('filter-vendor')?.value || undefined,
+        });
+
+        if (!data.items?.length) {
+          container.innerHTML = '<p class="empty-state">No devices match your filters.</p>';
+          return;
+        }
+
+        const totalPages = Math.ceil((data.total || 0) / pageSize);
+        container.innerHTML = `
+          <table class="data-table"><thead><tr>
+            <th>Hostname</th><th>Vendor</th><th>Model</th><th>Platform</th>
+            <th>Management IP</th><th>OS Version</th><th>Status</th><th>Last Seen</th>
+          </tr></thead>
+          <tbody>${data.items.map(d => `<tr style="cursor:pointer" onclick="location.href='/pages/device-detail.html?id=${d.id}'">
+            <td><strong>${App.escapeHtml(d.hostname)}</strong></td>
+            <td>${App.escapeHtml(d.vendor)}</td>
+            <td>${App.escapeHtml(d.model)}</td>
+            <td class="mono">${App.escapeHtml(d.platform)}</td>
+            <td class="mono">${App.escapeHtml(d.management_ip)}</td>
+            <td class="mono">${App.escapeHtml(d.os_version || d.firmware)}</td>
+            <td>${App.statusBadge(d.status)}</td>
+            <td>${App.formatDate(d.last_seen_at)}</td>
+          </tr>`).join('')}</tbody></table>
+          <div class="pagination-bar">
+            <span>${data.total ?? data.items.length} devices</span>
+            <div class="d-flex gap-2">
+              <button class="btn-na" id="prev-page" ${page <= 1 ? 'disabled' : ''}>Previous</button>
+              <span>Page ${page} of ${totalPages || 1}</span>
+              <button class="btn-na" id="next-page" ${page >= totalPages ? 'disabled' : ''}>Next</button>
+            </div>
+          </div>
+        `;
+
+        document.getElementById('prev-page')?.addEventListener('click', () => { page--; loadDevices(el); });
+        document.getElementById('next-page')?.addEventListener('click', () => { page++; loadDevices(el); });
+      } catch (err) {
+        container.innerHTML = `<div class="alert-na error m-3">${App.escapeHtml(err.message)}</div>`;
+      }
+    }
+  </script>
+</body>
+</html>

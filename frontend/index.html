@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NetAtlas — Sign In</title>
+  <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <div class="login-page">
+    <section class="login-hero">
+      <div class="hero-brand">
+        <svg class="logo-mark" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="56" height="56" rx="10" fill="#141c27"/>
+          <path d="M14 28 L22 20 L30 28 L38 20 L42 24" stroke="#00c9a7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <circle cx="22" cy="20" r="3" fill="#00c9a7"/>
+          <circle cx="30" cy="28" r="3" fill="#3b9eff"/>
+          <circle cx="38" cy="20" r="3" fill="#00c9a7"/>
+          <circle cx="14" cy="28" r="3" fill="#3b9eff"/>
+          <circle cx="42" cy="36" r="3" fill="#00c9a7"/>
+          <line x1="42" y1="24" x2="42" y2="33" stroke="#00c9a7" stroke-width="2"/>
+        </svg>
+        <h1>NetAtlas</h1>
+        <p class="tagline">Enterprise network discovery, topology mapping, and read-only operations intelligence.</p>
+      </div>
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <span class="value" id="hero-devices">—</span>
+          <span class="label">Devices</span>
+        </div>
+        <div class="hero-stat">
+          <span class="value" id="hero-links">—</span>
+          <span class="label">Links</span>
+        </div>
+        <div class="hero-stat">
+          <span class="value" id="hero-prefixes">—</span>
+          <span class="label">Prefixes</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="login-panel">
+      <div class="login-form-wrap">
+        <h2>Operator access</h2>
+        <p class="subtitle">Authenticate to enter the network operations console.</p>
+        <div id="login-error" class="alert-na error" style="display:none"></div>
+        <form id="login-form" class="form-na">
+          <div class="mb-3">
+            <label for="username">Username</label>
+            <input type="text" id="username" class="form-control" placeholder="operator" autocomplete="username" required>
+          </div>
+          <div class="mb-4">
+            <label for="password">Password</label>
+            <input type="password" id="password" class="form-control" placeholder="••••••••" autocomplete="current-password" required>
+          </div>
+          <button type="submit" class="btn-na btn-na-primary w-100" id="login-btn">Sign in</button>
+        </form>
+      </div>
+    </section>
+  </div>
+
+  <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    if (Auth.redirectIfAuthenticated()) throw new Error('redirect');
+
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('login-btn');
+      const errEl = document.getElementById('login-error');
+      errEl.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Signing in…';
+      try {
+        await Auth.login(
+          document.getElementById('username').value.trim(),
+          document.getElementById('password').value
+        );
+        window.location.href = '/pages/dashboard.html';
+      } catch (err) {
+        errEl.textContent = err.message || 'Authentication failed';
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Sign in';
+      }
+    });
+
+    async function loadHeroStats() {
+      try {
+        const [devices, graph, prefixes] = await Promise.allSettled([
+          fetch('/api/v1/devices?page_size=1').then(r => r.ok ? r.json() : null),
+          fetch('/api/v1/topology/graph').then(r => r.ok ? r.json() : null),
+          fetch('/api/v1/ipam/prefixes').then(r => r.ok ? r.json() : null),
+        ]);
+        if (devices.status === 'fulfilled' && devices.value)
+          document.getElementById('hero-devices').textContent = devices.value.total ?? '—';
+        if (graph.status === 'fulfilled' && graph.value)
+          document.getElementById('hero-links').textContent = (graph.value.edges || []).length;
+        if (prefixes.status === 'fulfilled' && prefixes.value)
+          document.getElementById('hero-prefixes').textContent = prefixes.value.length;
+      } catch { /* public stats optional */ }
+    }
+    loadHeroStats();
+  </script>
+</body>
+</html>

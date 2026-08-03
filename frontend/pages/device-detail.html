@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Device Detail — NetAtlas</title>
+  <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
+  <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/charts.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+    const deviceId = App.queryParam('id');
+    if (!deviceId) window.location.href = '/pages/devices.html';
+
+    App.initShell('devices', 'Device Detail', async (el) => {
+      el.innerHTML = '<p class="empty-state">Loading device…</p>';
+      try {
+        const device = await Api.getDevice(deviceId);
+        document.querySelector('.topbar-title').textContent = device.hostname || 'Device Detail';
+
+        el.innerHTML = `
+          <div class="stat-grid">
+            <div class="stat-block"><div class="stat-value mono" style="font-size:1.1rem">${App.escapeHtml(device.management_ip)}</div><div class="stat-label">Management IP</div></div>
+            <div class="stat-block"><div class="stat-value">${App.escapeHtml(device.vendor)}</div><div class="stat-label">Vendor</div></div>
+            <div class="stat-block"><div class="stat-value">${App.escapeHtml(device.model)}</div><div class="stat-label">Model</div></div>
+            <div class="stat-block accent"><div class="stat-value">${App.statusBadge(device.status)}</div><div class="stat-label">Status</div></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><h3>${App.escapeHtml(device.hostname)}</h3>
+              <a href="/pages/devices.html" class="btn-na">← Back to inventory</a>
+            </div>
+            <div class="panel-body">
+              <div class="row mb-3">
+                <div class="col-md-3"><small class="text-muted">Serial</small><div class="mono">${App.escapeHtml(device.serial)}</div></div>
+                <div class="col-md-3"><small class="text-muted">Firmware</small><div class="mono">${App.escapeHtml(device.firmware)}</div></div>
+                <div class="col-md-3"><small class="text-muted">OS Version</small><div class="mono">${App.escapeHtml(device.os_version)}</div></div>
+                <div class="col-md-3"><small class="text-muted">Last Seen</small><div>${App.formatDate(device.last_seen_at)}</div></div>
+              </div>
+              <div class="tab-bar">
+                <button class="tab-btn active" data-tab="interfaces">Interfaces</button>
+                <button class="tab-btn" data-tab="neighbors">Neighbors</button>
+                <button class="tab-btn" data-tab="metrics">Metrics</button>
+              </div>
+              <div id="tab-content"><p class="empty-state">Loading…</p></div>
+            </div>
+          </div>
+        `;
+
+        const tabs = el.querySelectorAll('.tab-btn');
+        tabs.forEach((btn) => btn.addEventListener('click', () => {
+          tabs.forEach((t) => t.classList.remove('active'));
+          btn.classList.add('active');
+          loadTab(btn.dataset.tab, el);
+        }));
+        loadTab('interfaces', el);
+      } catch (err) {
+        App.showError(el, err.message);
+      }
+    });
+
+    async function loadTab(tab, el) {
+      const content = el.querySelector('#tab-content');
+      content.innerHTML = '<p class="empty-state">Loading…</p>';
+      try {
+        if (tab === 'interfaces') {
+          const ifaces = await Api.getDeviceInterfaces(deviceId);
+          if (!ifaces?.length) { content.innerHTML = '<p class="empty-state">No interfaces.</p>'; return; }
+          content.innerHTML = `<table class="data-table"><thead><tr>
+            <th>Name</th><th>Admin</th><th>Oper</th><th>Speed</th><th>MAC</th><th>MTU</th><th>Trunk</th>
+          </tr></thead><tbody>${ifaces.map(i => `<tr>
+            <td class="mono"><strong>${App.escapeHtml(i.name)}</strong></td>
+            <td>${App.statusBadge(i.admin_status)}</td>
+            <td>${App.statusBadge(i.oper_status)}</td>
+            <td>${App.formatBps(i.speed_bps)}</td>
+            <td class="mono">${App.escapeHtml(i.mac)}</td>
+            <td>${i.mtu || '—'}</td>
+            <td>${i.is_trunk ? 'Yes' : 'No'}</td>
+          </tr>`).join('')}</tbody></table>`;
+        } else if (tab === 'neighbors') {
+          const neighbors = await Api.getDeviceNeighbors(deviceId);
+          if (!neighbors?.length) { content.innerHTML = '<p class="empty-state">No neighbors discovered.</p>'; return; }
+          content.innerHTML = `<table class="data-table"><thead><tr>
+            <th>Local Interface</th><th>Remote Device</th><th>Remote Interface</th><th>Protocol</th>
+          </tr></thead><tbody>${neighbors.map(n => `<tr>
+            <td class="mono">${App.escapeHtml(n.local_interface || n.interface)}</td>
+            <td>${App.escapeHtml(n.remote_hostname || n.hostname)}</td>
+            <td class="mono">${App.escapeHtml(n.remote_interface)}</td>
+            <td>${App.escapeHtml(n.protocol || 'LLDP')}</td>
+          </tr>`).join('')}</tbody></table>`;
+        } else if (tab === 'metrics') {
+          const metrics = await Api.getDeviceMetrics(deviceId);
+          content.innerHTML = '<div class="chart-wrap tall"><canvas id="metrics-chart"></canvas></div>';
+          const history = metrics.history || metrics.samples || [];
+          const labels = history.map((h) => App.formatDate(h.timestamp || h.ts));
+          const cpu = history.map((h) => h.cpu_percent ?? h.cpu);
+          const mem = history.map((h) => h.memory_percent ?? h.memory);
+          if (labels.length) {
+            Charts.lineChart('metrics-chart', labels, [
+              { label: 'CPU %', data: cpu, borderColor: Charts.COLORS.accent, backgroundColor: Charts.COLORS.accentDim, tension: 0.3, fill: true },
+              { label: 'Memory %', data: mem, borderColor: Charts.COLORS.info, backgroundColor: Charts.COLORS.infoDim, tension: 0.3, fill: true },
+            ]);
+          } else {
+            content.innerHTML = '<p class="empty-state">No metrics history available.</p>';
+          }
+        }
+      } catch (err) {
+        content.innerHTML = `<div class="alert-na error">${App.escapeHtml(err.message)}</div>`;
+      }
+    }
+  </script>
+</body>
+</html>
