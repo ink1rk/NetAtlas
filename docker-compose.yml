@@ -129,6 +129,14 @@ services:
     build:
       context: ./frontend
     image: ghcr.io/ink1rk/netatlas-frontend:1.0.0
+    # Mount sources so `git pull` updates UI without relying on a stale image layer
+    volumes:
+      - ./frontend/index.html:/usr/share/nginx/html/index.html:ro
+      - ./frontend/pages:/usr/share/nginx/html/pages:ro
+      - ./frontend/css:/usr/share/nginx/html/css:ro
+      - ./frontend/js:/usr/share/nginx/html/js:ro
+      - ./frontend/static:/usr/share/nginx/html/static:ro
+      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     restart: unless-stopped
 
   nginx:
