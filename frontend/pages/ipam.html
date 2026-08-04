@@ -3,55 +3,55 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IPAM — NetAtlas</title>
+  <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=20260804ru">
+  <link rel="stylesheet" href="/css/app.css?v=i18n1">
 </head>
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
   <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
-  <script src="/js/api.js?v=20260804ru"></script>
-  <script src="/js/auth.js?v=20260804ru"></script>
-  <script src="/js/charts.js?v=20260804ru"></script>
-  <script src="/js/app.js?v=20260804ru"></script>
+  <script src="/js/i18n.js?v=i18n1"></script>
+  <script src="/js/api.js?v=i18n1"></script>
+  <script src="/js/auth.js?v=i18n1"></script>
+  <script src="/js/charts.js?v=i18n1"></script>
+  <script src="/js/app.js?v=i18n1"></script>
   <script>
     let selectedPrefix = null;
 
-    App.initShell('ipam', 'Управление IP-адресами', (el) => {
+    App.initShell('ipam', 'title.ipam', (el) => {
       el.innerHTML = `
         <div class="row g-3">
           <div class="col-lg-4">
             <div class="panel">
-              <div class="panel-header"><h3>Префиксы</h3></div>
+              <div class="panel-header"><h3>${I18n.t('ipam.prefixes')}</h3></div>
               <div class="panel-body">
                 <form id="prefix-form" class="form-na mb-3">
                   <div class="mb-2">
-                    <label>Префикс (CIDR)</label>
+                    <label>${I18n.t('ipam.prefix_cidr')}</label>
                     <input type="text" id="prefix-cidr" class="form-control" placeholder="10.0.0.0/8" required>
                   </div>
                   <div class="mb-2">
-                    <label>Описание</label>
-                    <input type="text" id="prefix-desc" class="form-control" placeholder="Корпоративная LAN">
+                    <label>${I18n.t('ipam.description')}</label>
+                    <input type="text" id="prefix-desc" class="form-control" placeholder="${I18n.t('ipam.desc_ph')}">
                   </div>
-                  <button type="submit" class="btn-na btn-na-primary">Зарегистрировать</button>
+                  <button type="submit" class="btn-na btn-na-primary">${I18n.t('ipam.register')}</button>
                 </form>
-                <ul class="prefix-tree" id="prefix-list"><li class="empty-state">Загрузка…</li></ul>
+                <ul class="prefix-tree" id="prefix-list"><li class="empty-state">${I18n.t('common.loading')}</li></ul>
               </div>
             </div>
             <div class="panel mt-3">
-              <div class="panel-header"><h3>Утилизация</h3></div>
+              <div class="panel-header"><h3>${I18n.t('ipam.utilization')}</h3></div>
               <div class="panel-body"><div class="chart-wrap"><canvas id="util-chart"></canvas></div></div>
             </div>
           </div>
           <div class="col-lg-8">
             <div class="panel">
-              <div class="panel-header"><h3 id="addr-title">Адреса</h3></div>
-              <div class="panel-body p-0" id="addr-list"><p class="empty-state">Выберите префикс, чтобы увидеть адреса.</p></div>
+              <div class="panel-header"><h3 id="addr-title">${I18n.t('ipam.addresses')}</h3></div>
+              <div class="panel-body p-0" id="addr-list"><p class="empty-state">${I18n.t('ipam.select_prefix')}</p></div>
             </div>
           </div>
         </div>
       `;
-
       document.getElementById('prefix-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         try {
@@ -63,7 +63,6 @@
           loadPrefixes();
         } catch (err) { alert(err.message); }
       });
-
       loadPrefixes();
     });
 
@@ -72,18 +71,16 @@
       try {
         const prefixes = await Api.listPrefixes();
         if (!prefixes?.length) {
-          el.innerHTML = '<li class="empty-state">Префиксы не зарегистрированы.</li>';
+          el.innerHTML = `<li class="empty-state">${I18n.t('ipam.no_prefixes')}</li>`;
           return;
         }
-
         el.innerHTML = prefixes.map(p => `
           <li data-id="${p.id}" class="${selectedPrefix === p.id ? 'selected' : ''}">
             <span class="prefix-addr">${App.escapeHtml(p.prefix)}</span>
             <small class="text-muted d-block">${App.escapeHtml(p.description || '')}</small>
-            <small class="mono text-muted">занято ${p.used ?? 0} · свободно ${p.free ?? 0} · конфликты ${p.conflicts ?? 0}</small>
+            <small class="mono text-muted">${I18n.t('ipam.usage', { used: p.used ?? 0, free: p.free ?? 0, conflicts: p.conflicts ?? 0 })}</small>
           </li>
         `).join('');
-
         el.querySelectorAll('li[data-id]').forEach((li) => {
           li.addEventListener('click', () => {
             selectedPrefix = li.dataset.id;
@@ -92,12 +89,7 @@
             loadAddresses(selectedPrefix, prefixes.find(p => p.id === selectedPrefix));
           });
         });
-
-        Charts.doughnutChart('util-chart',
-          prefixes.map(p => p.prefix),
-          prefixes.map(p => p.used || 0),
-        );
-
+        Charts.doughnutChart('util-chart', prefixes.map(p => p.prefix), prefixes.map(p => p.used || 0));
         if (!selectedPrefix && prefixes[0]) {
           selectedPrefix = prefixes[0].id;
           loadAddresses(selectedPrefix, prefixes[0]);
@@ -107,22 +99,22 @@
 
     async function loadAddresses(prefixId, prefix) {
       const el = document.getElementById('addr-list');
-      document.getElementById('addr-title').textContent = `Адреса — ${prefix?.prefix || ''}`;
-      el.innerHTML = '<p class="empty-state">Загрузка…</p>';
+      document.getElementById('addr-title').textContent = I18n.t('ipam.addresses_for', { prefix: prefix?.prefix || '' });
+      el.innerHTML = `<p class="empty-state">${I18n.t('common.loading')}</p>`;
       try {
         const data = await Api.listAddresses(prefixId);
         if (!data.items?.length) {
-          el.innerHTML = '<p class="empty-state">В этом префиксе нет адресов.</p>';
+          el.innerHTML = `<p class="empty-state">${I18n.t('ipam.no_addresses')}</p>`;
           return;
         }
         el.innerHTML = `<table class="data-table"><thead><tr>
-          <th>Адрес</th><th>Статус</th><th>Имя узла</th><th>MAC</th><th>Конфликт</th>
+          <th>${I18n.t('ipam.address')}</th><th>${I18n.t('common.status')}</th><th>${I18n.t('common.hostname')}</th><th>${I18n.t('ipam.mac')}</th><th>${I18n.t('ipam.conflict')}</th>
         </tr></thead><tbody>${data.items.map(a => `<tr>
           <td class="mono"><strong>${App.escapeHtml(a.address)}</strong></td>
           <td>${App.statusBadge(a.status)}</td>
           <td>${App.escapeHtml(a.hostname)}</td>
           <td class="mono">${App.escapeHtml(a.mac)}</td>
-          <td>${a.is_conflict ? '<span class="badge-status failed">Да</span>' : '—'}</td>
+          <td>${a.is_conflict ? `<span class="badge-status failed">${I18n.t('common.yes')}</span>` : '—'}</td>
         </tr>`).join('')}</tbody></table>`;
       } catch (err) { el.innerHTML = `<div class="alert-na error m-3">${App.escapeHtml(err.message)}</div>`; }
     }

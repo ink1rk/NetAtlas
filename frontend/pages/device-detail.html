@@ -3,55 +3,54 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Карточка устройства — NetAtlas</title>
+  <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=20260804ru">
+  <link rel="stylesheet" href="/css/app.css?v=i18n1">
 </head>
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
   <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
-  <script src="/js/api.js?v=20260804ru"></script>
-  <script src="/js/auth.js?v=20260804ru"></script>
-  <script src="/js/charts.js?v=20260804ru"></script>
-  <script src="/js/app.js?v=20260804ru"></script>
+  <script src="/js/i18n.js?v=i18n1"></script>
+  <script src="/js/api.js?v=i18n1"></script>
+  <script src="/js/auth.js?v=i18n1"></script>
+  <script src="/js/charts.js?v=i18n1"></script>
+  <script src="/js/app.js?v=i18n1"></script>
   <script>
     const deviceId = App.queryParam('id');
     if (!deviceId) window.location.href = '/pages/devices.html';
 
-    App.initShell('devices', 'Карточка устройства', async (el) => {
-      el.innerHTML = '<p class="empty-state">Загрузка устройства…</p>';
+    App.initShell('devices', 'title.device_detail', async (el) => {
+      el.innerHTML = `<p class="empty-state">${I18n.t('device.loading')}</p>`;
       try {
         const device = await Api.getDevice(deviceId);
-        document.querySelector('.topbar-title').textContent = device.hostname || 'Карточка устройства';
-
+        document.querySelector('.topbar-title').textContent = device.hostname || I18n.t('title.device_detail');
         el.innerHTML = `
           <div class="stat-grid">
-            <div class="stat-block"><div class="stat-value mono" style="font-size:1.1rem">${App.escapeHtml(device.management_ip)}</div><div class="stat-label">Management IP</div></div>
-            <div class="stat-block"><div class="stat-value">${App.escapeHtml(device.vendor)}</div><div class="stat-label">Вендор</div></div>
-            <div class="stat-block"><div class="stat-value">${App.escapeHtml(device.model)}</div><div class="stat-label">Модель</div></div>
-            <div class="stat-block accent"><div class="stat-value">${App.statusBadge(device.status)}</div><div class="stat-label">Статус</div></div>
+            <div class="stat-block"><div class="stat-value mono" style="font-size:1.1rem">${App.escapeHtml(device.management_ip)}</div><div class="stat-label">${I18n.t('devices.mgmt_ip')}</div></div>
+            <div class="stat-block"><div class="stat-value">${App.escapeHtml(device.vendor)}</div><div class="stat-label">${I18n.t('common.vendor')}</div></div>
+            <div class="stat-block"><div class="stat-value">${App.escapeHtml(device.model)}</div><div class="stat-label">${I18n.t('common.model')}</div></div>
+            <div class="stat-block accent"><div class="stat-value">${App.statusBadge(device.status)}</div><div class="stat-label">${I18n.t('common.status')}</div></div>
           </div>
           <div class="panel">
             <div class="panel-header"><h3>${App.escapeHtml(device.hostname)}</h3>
-              <a href="/pages/devices.html" class="btn-na">← К инвентарю</a>
+              <a href="/pages/devices.html" class="btn-na">${I18n.t('device.back')}</a>
             </div>
             <div class="panel-body">
               <div class="row mb-3">
-                <div class="col-md-3"><small class="text-muted">Серийный номер</small><div class="mono">${App.escapeHtml(device.serial)}</div></div>
-                <div class="col-md-3"><small class="text-muted">Прошивка</small><div class="mono">${App.escapeHtml(device.firmware)}</div></div>
-                <div class="col-md-3"><small class="text-muted">Версия ОС</small><div class="mono">${App.escapeHtml(device.os_version)}</div></div>
-                <div class="col-md-3"><small class="text-muted">Последний контакт</small><div>${App.formatDate(device.last_seen_at)}</div></div>
+                <div class="col-md-3"><small class="text-muted">${I18n.t('device.serial')}</small><div class="mono">${App.escapeHtml(device.serial)}</div></div>
+                <div class="col-md-3"><small class="text-muted">${I18n.t('device.firmware')}</small><div class="mono">${App.escapeHtml(device.firmware)}</div></div>
+                <div class="col-md-3"><small class="text-muted">${I18n.t('device.os')}</small><div class="mono">${App.escapeHtml(device.os_version)}</div></div>
+                <div class="col-md-3"><small class="text-muted">${I18n.t('device.last_seen')}</small><div>${App.formatDate(device.last_seen_at)}</div></div>
               </div>
               <div class="tab-bar">
-                <button class="tab-btn active" data-tab="interfaces">Интерфейсы</button>
-                <button class="tab-btn" data-tab="neighbors">Соседи</button>
-                <button class="tab-btn" data-tab="metrics">Метрики</button>
+                <button class="tab-btn active" data-tab="interfaces">${I18n.t('device.tab_ifaces')}</button>
+                <button class="tab-btn" data-tab="neighbors">${I18n.t('device.tab_neighbors')}</button>
+                <button class="tab-btn" data-tab="metrics">${I18n.t('device.tab_metrics')}</button>
               </div>
-              <div id="tab-content"><p class="empty-state">Загрузка…</p></div>
+              <div id="tab-content"><p class="empty-state">${I18n.t('common.loading')}</p></div>
             </div>
           </div>
         `;
-
         const tabs = el.querySelectorAll('.tab-btn');
         tabs.forEach((btn) => btn.addEventListener('click', () => {
           tabs.forEach((t) => t.classList.remove('active'));
@@ -66,13 +65,13 @@
 
     async function loadTab(tab, el) {
       const content = el.querySelector('#tab-content');
-      content.innerHTML = '<p class="empty-state">Загрузка…</p>';
+      content.innerHTML = `<p class="empty-state">${I18n.t('common.loading')}</p>`;
       try {
         if (tab === 'interfaces') {
           const ifaces = await Api.getDeviceInterfaces(deviceId);
-          if (!ifaces?.length) { content.innerHTML = '<p class="empty-state">Интерфейсы не найдены.</p>'; return; }
+          if (!ifaces?.length) { content.innerHTML = `<p class="empty-state">${I18n.t('device.no_ifaces')}</p>`; return; }
           content.innerHTML = `<table class="data-table"><thead><tr>
-            <th>Имя</th><th>Admin</th><th>Oper</th><th>Скорость</th><th>MAC</th><th>MTU</th><th>Trunk</th>
+            <th>${I18n.t('device.iface_name')}</th><th>Admin</th><th>Oper</th><th>${I18n.t('device.speed')}</th><th>MAC</th><th>MTU</th><th>Trunk</th>
           </tr></thead><tbody>${ifaces.map(i => `<tr>
             <td class="mono"><strong>${App.escapeHtml(i.name)}</strong></td>
             <td>${App.statusBadge(i.admin_status)}</td>
@@ -80,13 +79,13 @@
             <td>${App.formatBps(i.speed_bps)}</td>
             <td class="mono">${App.escapeHtml(i.mac)}</td>
             <td>${i.mtu || '—'}</td>
-            <td>${i.is_trunk ? 'Да' : 'Нет'}</td>
+            <td>${i.is_trunk ? I18n.t('common.yes') : I18n.t('common.no')}</td>
           </tr>`).join('')}</tbody></table>`;
         } else if (tab === 'neighbors') {
           const neighbors = await Api.getDeviceNeighbors(deviceId);
-          if (!neighbors?.length) { content.innerHTML = '<p class="empty-state">Соседи не обнаружены.</p>'; return; }
+          if (!neighbors?.length) { content.innerHTML = `<p class="empty-state">${I18n.t('device.no_neighbors')}</p>`; return; }
           content.innerHTML = `<table class="data-table"><thead><tr>
-            <th>Локальный интерфейс</th><th>Удалённое устройство</th><th>Удалённый интерфейс</th><th>Протокол</th>
+            <th>${I18n.t('device.local_iface')}</th><th>${I18n.t('device.remote_device')}</th><th>${I18n.t('device.remote_iface')}</th><th>${I18n.t('device.protocol')}</th>
           </tr></thead><tbody>${neighbors.map(n => `<tr>
             <td class="mono">${App.escapeHtml(n.local_interface || n.interface)}</td>
             <td>${App.escapeHtml(n.remote_hostname || n.hostname)}</td>
@@ -102,11 +101,11 @@
           const mem = history.map((h) => h.memory_percent ?? h.memory);
           if (labels.length) {
             Charts.lineChart('metrics-chart', labels, [
-              { label: 'CPU %', data: cpu, borderColor: Charts.COLORS.accent, backgroundColor: Charts.COLORS.accentDim, tension: 0.3, fill: true },
-              { label: 'Память %', data: mem, borderColor: Charts.COLORS.info, backgroundColor: Charts.COLORS.infoDim, tension: 0.3, fill: true },
+              { label: I18n.t('device.cpu'), data: cpu, borderColor: Charts.COLORS.accent, backgroundColor: Charts.COLORS.accentDim, tension: 0.3, fill: true },
+              { label: I18n.t('device.memory'), data: mem, borderColor: Charts.COLORS.info, backgroundColor: Charts.COLORS.infoDim, tension: 0.3, fill: true },
             ]);
           } else {
-            content.innerHTML = '<p class="empty-state">История метрик недоступна.</p>';
+            content.innerHTML = `<p class="empty-state">${I18n.t('device.no_metrics')}</p>`;
           }
         }
       } catch (err) {

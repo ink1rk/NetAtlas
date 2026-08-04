@@ -169,8 +169,8 @@ install_systemd() {
 start_stack() {
   cd "${NETATLAS_HOME}"
   log "Building and starting containers"
-  # Prefer local builds; do not let a stale GHCR :1.0.0 tag hide local UI fixes
-  docker compose build --pull
+  docker compose build --no-cache frontend
+  docker compose build
   docker compose up -d --force-recreate
 }
 

@@ -154,7 +154,7 @@ const Topology = (() => {
     if (cy) { cy.destroy(); cy = null; }
     stopTrafficAnimation();
 
-    el.innerHTML = '<div class="empty-state"><p>Загрузка топологии…</p></div>';
+    el.innerHTML = `<div class="empty-state"><p>${(typeof I18n !== 'undefined' && I18n.t('topo.loading')) || 'Loading topology…'}</p></div>`;
 
     try {
       const graph = options.graph || await Api.topologyGraph();
@@ -190,7 +190,7 @@ const Topology = (() => {
 
       return cy;
     } catch (err) {
-      el.innerHTML = `<div class="empty-state"><p>Не удалось загрузить топологию: ${App.escapeHtml(err.message)}</p></div>`;
+      el.innerHTML = `<div class="empty-state"><p>${App.escapeHtml((typeof I18n !== 'undefined' && I18n.t('topo.failed', { msg: err.message })) || err.message)}</p></div>`;
       return null;
     }
   }

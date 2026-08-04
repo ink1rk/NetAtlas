@@ -3,50 +3,50 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Обнаружение — NetAtlas</title>
+  <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=20260804ru">
+  <link rel="stylesheet" href="/css/app.css?v=i18n1">
 </head>
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-  <script src="/js/api.js?v=20260804ru"></script>
-  <script src="/js/auth.js?v=20260804ru"></script>
-  <script src="/js/app.js?v=20260804ru"></script>
+  <script src="/js/i18n.js?v=i18n1"></script>
+  <script src="/js/api.js?v=i18n1"></script>
+  <script src="/js/auth.js?v=i18n1"></script>
+  <script src="/js/app.js?v=i18n1"></script>
   <script>
-    App.initShell('discovery', 'Обнаружение сети', (el) => {
+    App.initShell('discovery', 'title.discovery', (el) => {
       el.innerHTML = `
         <div class="row g-3">
           <div class="col-lg-5">
             <div class="panel">
-              <div class="panel-header"><h3>Сид-адреса</h3></div>
+              <div class="panel-header"><h3>${I18n.t('disc.seeds')}</h3></div>
               <div class="panel-body">
                 <form id="seed-form" class="form-na mb-3">
                   <div class="mb-2">
-                    <label>Цель (IP или CIDR)</label>
+                    <label>${I18n.t('disc.target')}</label>
                     <input type="text" id="seed-target" class="form-control" placeholder="10.0.0.0/24" required>
                   </div>
                   <div class="mb-2">
-                    <label>Метка</label>
-                    <input type="text" id="seed-label" class="form-control" placeholder="Ядро сети">
+                    <label>${I18n.t('disc.label')}</label>
+                    <input type="text" id="seed-label" class="form-control" placeholder="${I18n.t('disc.label_ph')}">
                   </div>
-                  <button type="submit" class="btn-na btn-na-primary">Добавить сид</button>
+                  <button type="submit" class="btn-na btn-na-primary">${I18n.t('disc.add_seed')}</button>
                 </form>
-                <div id="seeds-list"><p class="empty-state">Загрузка…</p></div>
+                <div id="seeds-list"><p class="empty-state">${I18n.t('common.loading')}</p></div>
               </div>
             </div>
           </div>
           <div class="col-lg-7">
             <div class="panel">
               <div class="panel-header">
-                <h3>Задания обнаружения</h3>
-                <button class="btn-na btn-na-primary" id="btn-start-job">Запустить</button>
+                <h3>${I18n.t('disc.jobs')}</h3>
+                <button class="btn-na btn-na-primary" id="btn-start-job">${I18n.t('disc.start')}</button>
               </div>
-              <div class="panel-body p-0" id="jobs-list"><p class="empty-state">Загрузка…</p></div>
+              <div class="panel-body p-0" id="jobs-list"><p class="empty-state">${I18n.t('common.loading')}</p></div>
             </div>
           </div>
         </div>
       `;
-
       document.getElementById('seed-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         try {
@@ -58,14 +58,9 @@
           loadSeeds();
         } catch (err) { alert(err.message); }
       });
-
       document.getElementById('btn-start-job').addEventListener('click', async () => {
-        try {
-          await Api.startJob({});
-          loadJobs();
-        } catch (err) { alert(err.message); }
+        try { await Api.startJob({}); loadJobs(); } catch (err) { alert(err.message); }
       });
-
       loadSeeds();
       loadJobs();
       setInterval(loadJobs, 10000);
@@ -75,21 +70,21 @@
       const el = document.getElementById('seeds-list');
       try {
         const seeds = await Api.listSeeds();
-        if (!seeds?.length) { el.innerHTML = '<p class="empty-state">Сиды не настроены.</p>'; return; }
+        if (!seeds?.length) { el.innerHTML = `<p class="empty-state">${I18n.t('disc.no_seeds')}</p>`; return; }
         el.innerHTML = seeds.map(s => `
           <div class="d-flex justify-content-between align-items-center py-2 border-bottom" style="border-color:var(--na-border-subtle)!important">
             <div>
               <div class="mono">${App.escapeHtml(s.target)}</div>
               <small class="text-muted">${App.escapeHtml(s.label || '')}</small>
             </div>
-            <button class="btn-na btn-na-danger btn-sm" onclick="deleteSeed('${s.id}')">Удалить</button>
+            <button class="btn-na btn-na-danger btn-sm" onclick="deleteSeed('${s.id}')">${I18n.t('common.remove')}</button>
           </div>
         `).join('');
       } catch (err) { el.innerHTML = `<div class="alert-na error">${App.escapeHtml(err.message)}</div>`; }
     }
 
     async function deleteSeed(id) {
-      if (!confirm('Удалить этот сид?')) return;
+      if (!confirm(I18n.t('disc.confirm_remove'))) return;
       try { await Api.deleteSeed(id); loadSeeds(); } catch (err) { alert(err.message); }
     }
 
@@ -97,9 +92,9 @@
       const el = document.getElementById('jobs-list');
       try {
         const jobs = await Api.listJobs();
-        if (!jobs?.length) { el.innerHTML = '<p class="empty-state">Заданий обнаружения пока нет.</p>'; return; }
+        if (!jobs?.length) { el.innerHTML = `<p class="empty-state">${I18n.t('disc.no_jobs')}</p>`; return; }
         el.innerHTML = `<table class="data-table"><thead><tr>
-          <th>ID</th><th>Статус</th><th>Начало</th><th>Окончание</th><th>Статистика</th>
+          <th>ID</th><th>${I18n.t('common.status')}</th><th>${I18n.t('disc.started')}</th><th>${I18n.t('disc.finished')}</th><th>${I18n.t('disc.stats')}</th>
         </tr></thead><tbody>${jobs.map(j => `<tr>
           <td class="mono">${App.escapeHtml(j.id?.slice(0, 8))}…</td>
           <td>${App.statusBadge(j.status)}</td>

@@ -3,43 +3,44 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Мониторинг — NetAtlas</title>
+  <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=20260804ru">
+  <link rel="stylesheet" href="/css/app.css?v=i18n1">
 </head>
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
   <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
-  <script src="/js/api.js?v=20260804ru"></script>
-  <script src="/js/auth.js?v=20260804ru"></script>
-  <script src="/js/charts.js?v=20260804ru"></script>
-  <script src="/js/app.js?v=20260804ru"></script>
+  <script src="/js/i18n.js?v=i18n1"></script>
+  <script src="/js/api.js?v=i18n1"></script>
+  <script src="/js/auth.js?v=i18n1"></script>
+  <script src="/js/charts.js?v=i18n1"></script>
+  <script src="/js/app.js?v=i18n1"></script>
   <script>
-    App.initShell('monitoring', 'Системный мониторинг', async (el) => {
+    App.initShell('monitoring', 'title.monitoring', async (el) => {
       el.innerHTML = `
         <div class="stat-grid" id="sys-stats">
-          <div class="stat-block accent"><div class="stat-value" id="health-status">—</div><div class="stat-label">Здоровье API</div></div>
-          <div class="stat-block"><div class="stat-value" id="ready-status">—</div><div class="stat-label">Готовность</div></div>
-          <div class="stat-block"><div class="stat-value" id="api-version">—</div><div class="stat-label">Версия</div></div>
-          <div class="stat-block warning"><div class="stat-value" id="device-up">—</div><div class="stat-label">Устройства в сети</div></div>
+          <div class="stat-block accent"><div class="stat-value" id="health-status">—</div><div class="stat-label">${I18n.t('mon.api_health')}</div></div>
+          <div class="stat-block"><div class="stat-value" id="ready-status">—</div><div class="stat-label">${I18n.t('mon.readiness')}</div></div>
+          <div class="stat-block"><div class="stat-value" id="api-version">—</div><div class="stat-label">${I18n.t('mon.version')}</div></div>
+          <div class="stat-block warning"><div class="stat-value" id="device-up">—</div><div class="stat-label">${I18n.t('mon.devices_up')}</div></div>
         </div>
         <div class="row g-3">
           <div class="col-lg-6">
             <div class="panel">
-              <div class="panel-header"><h3>Состояние устройств</h3></div>
+              <div class="panel-header"><h3>${I18n.t('mon.device_health')}</h3></div>
               <div class="panel-body"><div class="chart-wrap tall"><canvas id="health-chart"></canvas></div></div>
             </div>
           </div>
           <div class="col-lg-6">
             <div class="panel">
-              <div class="panel-header"><h3>Активность заданий обнаружения</h3></div>
+              <div class="panel-header"><h3>${I18n.t('mon.job_activity')}</h3></div>
               <div class="panel-body"><div class="chart-wrap tall"><canvas id="jobs-chart"></canvas></div></div>
             </div>
           </div>
         </div>
         <div class="panel mt-3">
-          <div class="panel-header"><h3>Метрики устройств</h3></div>
-          <div class="panel-body p-0" id="metrics-table"><p class="empty-state">Загрузка…</p></div>
+          <div class="panel-header"><h3>${I18n.t('mon.device_metrics')}</h3></div>
+          <div class="panel-body p-0" id="metrics-table"><p class="empty-state">${I18n.t('common.loading')}</p></div>
         </div>
       `;
 
@@ -52,9 +53,9 @@
         ]);
 
         document.getElementById('health-status').innerHTML = health.status === 'ok'
-          ? '<span class="badge-status up">OK</span>' : '<span class="badge-status down">Ошибка</span>';
+          ? '<span class="badge-status up">OK</span>' : `<span class="badge-status down">${I18n.t('mon.error')}</span>`;
         document.getElementById('ready-status').innerHTML = ready
-          ? '<span class="badge-status up">Готов</span>' : '<span class="badge-status down">Не готов</span>';
+          ? `<span class="badge-status up">${I18n.t('mon.ready')}</span>` : `<span class="badge-status down">${I18n.t('mon.not_ready')}</span>`;
         document.getElementById('api-version').textContent = health.version || '1.0.0';
 
         const upCount = (devices.items || []).filter(d => (d.status || '').toLowerCase() === 'up').length;
@@ -69,47 +70,40 @@
         });
 
         Charts.doughnutChart('health-chart',
-          ['В сети', 'Недоступны', 'Неизвестно'],
+          [I18n.t('mon.up'), I18n.t('mon.down'), I18n.t('mon.unknown')],
           [statusCounts.up, statusCounts.down, statusCounts.unknown],
           [Charts.COLORS.accent, Charts.COLORS.danger, Charts.COLORS.muted]
         );
 
         const jobStatus = {};
         (jobs || []).forEach((j) => {
-          const label = App.STATUS_LABELS[(j.status || '').toLowerCase()] || j.status;
+          const label = I18n.statusLabel(j.status);
           jobStatus[label] = (jobStatus[label] || 0) + 1;
         });
         Charts.barChart('jobs-chart',
           Object.keys(jobStatus),
-          [{ label: 'Задания', data: Object.values(jobStatus), backgroundColor: Charts.COLORS.infoDim, borderColor: Charts.COLORS.info, borderWidth: 1 }],
+          [{ label: I18n.t('mon.jobs'), data: Object.values(jobStatus), backgroundColor: Charts.COLORS.infoDim, borderColor: Charts.COLORS.info, borderWidth: 1 }],
           { plugins: { legend: { display: false } } }
         );
 
         const metricsEl = document.getElementById('metrics-table');
         const sampleDevices = (devices.items || []).slice(0, 8);
         const metricsRows = await Promise.allSettled(
-          sampleDevices.map(async (d) => {
-            const m = await Api.getDeviceMetrics(d.id);
-            return { device: d, metrics: m };
-          })
+          sampleDevices.map(async (d) => ({ device: d, metrics: await Api.getDeviceMetrics(d.id) }))
         );
-
-        const rows = metricsRows
-          .filter((r) => r.status === 'fulfilled')
-          .map((r) => r.value);
-
+        const rows = metricsRows.filter((r) => r.status === 'fulfilled').map((r) => r.value);
         if (!rows.length) {
-          metricsEl.innerHTML = '<p class="empty-state">Метрики устройств недоступны.</p>';
+          metricsEl.innerHTML = `<p class="empty-state">${I18n.t('mon.no_metrics')}</p>`;
         } else {
           metricsEl.innerHTML = `<table class="data-table"><thead><tr>
-            <th>Устройство</th><th>CPU %</th><th>Память %</th><th>Аптайм</th><th>Последний опрос</th>
+            <th>${I18n.t('mon.device')}</th><th>${I18n.t('device.cpu')}</th><th>${I18n.t('device.memory')}</th><th>${I18n.t('mon.uptime')}</th><th>${I18n.t('mon.last_polled')}</th>
           </tr></thead><tbody>${rows.map(({ device, metrics }) => {
             const latest = metrics.latest || metrics.current || metrics;
             return `<tr>
               <td><a href="/pages/device-detail.html?id=${device.id}">${App.escapeHtml(device.hostname)}</a></td>
               <td class="mono">${latest.cpu_percent ?? latest.cpu ?? '—'}</td>
               <td class="mono">${latest.memory_percent ?? latest.memory ?? '—'}</td>
-              <td class="mono">${latest.uptime_seconds ? Math.floor(latest.uptime_seconds / 86400) + ' дн.' : '—'}</td>
+              <td class="mono">${latest.uptime_seconds ? Math.floor(latest.uptime_seconds / 86400) + ' ' + I18n.t('unit.days') : '—'}</td>
               <td>${App.formatDate(latest.timestamp || latest.polled_at)}</td>
             </tr>`;
           }).join('')}</tbody></table>`;

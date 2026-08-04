@@ -17,7 +17,7 @@ const Api = (() => {
   async function refreshTokens() {
     if (refreshing) return refreshing;
     const rt = getRefreshToken();
-    if (!rt) throw new Error('Нет токена обновления');
+    if (!rt) throw new Error((typeof I18n !== 'undefined' && I18n.t('api.no_refresh')) || 'No refresh token');
 
     refreshing = fetch(`${API_BASE}/auth/refresh`, {
       method: 'POST',
@@ -25,7 +25,7 @@ const Api = (() => {
       body: JSON.stringify({ refresh_token: rt }),
     }).then(async (res) => {
       refreshing = null;
-      if (!res.ok) throw new Error('Не удалось обновить сессию');
+      if (!res.ok) throw new Error((typeof I18n !== 'undefined' && I18n.t('api.refresh_failed')) || 'Refresh failed');
       const data = await res.json();
       sessionStorage.setItem('access_token', data.access_token);
       sessionStorage.setItem('refresh_token', data.refresh_token);
@@ -55,7 +55,7 @@ const Api = (() => {
       } catch {
         sessionStorage.clear();
         window.location.href = '/';
-        throw new Error('Сессия истекла');
+        throw new Error((typeof I18n !== 'undefined' && I18n.t('api.session_expired')) || 'Session expired');
       }
     }
 

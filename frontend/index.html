@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NetAtlas — Вход</title>
+  <title data-i18n-title="login.title">NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=20260804ru">
+  <link rel="stylesheet" href="/css/app.css?v=i18n1">
 </head>
 <body>
   <div class="login-page">
@@ -13,34 +13,40 @@
       <div class="hero-brand">
         <img src="/static/brand/netatlas-mark.svg" alt="NetAtlas" class="logo-mark">
         <h1>Net<span>Atlas</span></h1>
-        <p class="tagline">Цифровой атлас корпоративной инфраструктуры — топология, инвентарь и наблюдаемость в одном центре управления знаниями.</p>
+        <p class="tagline" data-i18n="login.tagline"></p>
       </div>
     </section>
 
     <section class="login-panel">
+      <div id="login-lang"></div>
       <div class="login-form-wrap">
-        <h2>Доступ оператора</h2>
-        <p class="subtitle">Войдите, чтобы открыть консоль сетевых операций.</p>
+        <h2 data-i18n="login.heading"></h2>
+        <p class="subtitle" data-i18n="login.subtitle"></p>
         <div id="login-error" class="alert-na error" style="display:none"></div>
         <form id="login-form" class="form-na">
           <div class="mb-3">
-            <label for="username">Имя пользователя</label>
+            <label for="username" data-i18n="login.username"></label>
             <input type="text" id="username" class="form-control" placeholder="operator" autocomplete="username" required>
           </div>
           <div class="mb-4">
-            <label for="password">Пароль</label>
+            <label for="password" data-i18n="login.password"></label>
             <input type="password" id="password" class="form-control" placeholder="••••••••" autocomplete="current-password" required>
           </div>
-          <button type="submit" class="btn-na btn-na-primary w-100" id="login-btn">Войти</button>
+          <button type="submit" class="btn-na btn-na-primary w-100" id="login-btn" data-i18n="login.submit"></button>
         </form>
       </div>
     </section>
   </div>
 
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-  <script src="/js/api.js?v=20260804ru"></script>
-  <script src="/js/auth.js?v=20260804ru"></script>
+  <script src="/js/i18n.js?v=i18n1"></script>
+  <script src="/js/api.js?v=i18n1"></script>
+  <script src="/js/auth.js?v=i18n1"></script>
   <script>
+    document.getElementById('login-lang').innerHTML = I18n.langSwitcherHtml('lang-switch--login');
+    I18n.applyDom();
+    I18n.bindLangSwitcher();
+
     if (Auth.redirectIfAuthenticated()) throw new Error('redirect');
 
     document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -49,7 +55,7 @@
       const errEl = document.getElementById('login-error');
       errEl.style.display = 'none';
       btn.disabled = true;
-      btn.textContent = 'Вход…';
+      btn.textContent = I18n.t('login.signing_in');
       try {
         await Auth.login(
           document.getElementById('username').value.trim(),
@@ -57,10 +63,10 @@
         );
         window.location.href = '/pages/dashboard.html';
       } catch (err) {
-        errEl.textContent = err.message || 'Ошибка аутентификации';
+        errEl.textContent = err.message || I18n.t('login.auth_failed');
         errEl.style.display = 'block';
         btn.disabled = false;
-        btn.textContent = 'Войти';
+        btn.textContent = I18n.t('login.submit');
       }
     });
   </script>

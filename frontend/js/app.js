@@ -1,40 +1,28 @@
 /**
- * NetAtlas — общие утилиты приложения
+ * NetAtlas shared application utilities
  */
 const App = (() => {
-  const NAV = [
-    { section: 'Обзор', items: [
-      { id: 'dashboard', label: 'Панель', href: '/pages/dashboard.html', icon: 'grid' },
-      { id: 'topology', label: 'Топология', href: '/pages/topology.html', icon: 'share' },
-      { id: 'monitoring', label: 'Мониторинг', href: '/pages/monitoring.html', icon: 'activity' },
-      { id: 'observability', label: 'Наблюдаемость', href: '/pages/observability.html', icon: 'shield' },
-    ]},
-    { section: 'Инвентарь', items: [
-      { id: 'devices', label: 'Устройства', href: '/pages/devices.html', icon: 'server' },
-      { id: 'search', label: 'Поиск', href: '/pages/search.html', icon: 'search' },
-      { id: 'ipam', label: 'IPAM', href: '/pages/ipam.html', icon: 'network' },
-    ]},
-    { section: 'Операции', items: [
-      { id: 'discovery', label: 'Обнаружение', href: '/pages/discovery.html', icon: 'radar' },
-      { id: 'snapshots', label: 'Снимки', href: '/pages/snapshots.html', icon: 'layers' },
-    ]},
-  ];
+  const ASSET_V = 'i18n1';
 
-  const STATUS_LABELS = {
-    up: 'в сети',
-    down: 'недоступен',
-    running: 'выполняется',
-    completed: 'завершён',
-    failed: 'ошибка',
-    pending: 'ожидание',
-    cancelled: 'отменён',
-    problem: 'проблема',
-    ok: 'норма',
-    unknown: 'неизвестно',
-    used: 'занят',
-    free: 'свободен',
-    reserved: 'зарезервирован',
-  };
+  function navSections() {
+    return [
+      { section: I18n.t('nav.overview'), items: [
+        { id: 'dashboard', label: I18n.t('nav.dashboard'), href: '/pages/dashboard.html', icon: 'grid' },
+        { id: 'topology', label: I18n.t('nav.topology'), href: '/pages/topology.html', icon: 'share' },
+        { id: 'monitoring', label: I18n.t('nav.monitoring'), href: '/pages/monitoring.html', icon: 'activity' },
+        { id: 'observability', label: I18n.t('nav.observability'), href: '/pages/observability.html', icon: 'shield' },
+      ]},
+      { section: I18n.t('nav.inventory'), items: [
+        { id: 'devices', label: I18n.t('nav.devices'), href: '/pages/devices.html', icon: 'server' },
+        { id: 'search', label: I18n.t('nav.search'), href: '/pages/search.html', icon: 'search' },
+        { id: 'ipam', label: I18n.t('nav.ipam'), href: '/pages/ipam.html', icon: 'network' },
+      ]},
+      { section: I18n.t('nav.operations'), items: [
+        { id: 'discovery', label: I18n.t('nav.discovery'), href: '/pages/discovery.html', icon: 'radar' },
+        { id: 'snapshots', label: I18n.t('nav.snapshots'), href: '/pages/snapshots.html', icon: 'layers' },
+      ]},
+    ];
+  }
 
   const ICONS = {
     grid: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>',
@@ -62,7 +50,7 @@ const App = (() => {
   function formatDate(iso) {
     if (!iso) return '—';
     try {
-      return new Date(iso).toLocaleString('ru-RU', {
+      return new Date(iso).toLocaleString(I18n.locale(), {
         month: 'short', day: 'numeric', year: 'numeric',
         hour: '2-digit', minute: '2-digit',
       });
@@ -71,14 +59,14 @@ const App = (() => {
 
   function statusBadge(status) {
     const s = (status || 'unknown').toLowerCase();
-    const cls = Object.keys(STATUS_LABELS).includes(s) ? s : 'unknown';
-    const label = STATUS_LABELS[s] || status || STATUS_LABELS.unknown;
-    return `<span class="badge-status ${cls}">${escapeHtml(label)}</span>`;
+    const known = ['up', 'down', 'running', 'completed', 'failed', 'pending', 'cancelled', 'problem', 'ok', 'unknown', 'used', 'free', 'reserved'];
+    const cls = known.includes(s) ? s : 'unknown';
+    return `<span class="badge-status ${cls}">${escapeHtml(I18n.statusLabel(status))}</span>`;
   }
 
   function renderShell(activePage, pageTitle) {
     const user = Auth.getUser();
-    const navHtml = NAV.map((sec) => `
+    const navHtml = navSections().map((sec) => `
       <div class="nav-section-label">${sec.section}</div>
       ${sec.items.map((item) => `
         <a href="${item.href}" class="nav-link${item.id === activePage ? ' active' : ''}">
@@ -97,13 +85,14 @@ const App = (() => {
           </div>
           <nav class="sidebar-nav">${navHtml}</nav>
           <div class="sidebar-footer">
-            <div>${escapeHtml(user?.username || 'оператор')}</div>
-            <button class="btn-na" id="logout-btn" style="margin-top:0.5rem;width:100%">Выйти</button>
+            <div>${escapeHtml(user?.username || I18n.t('shell.operator'))}</div>
+            <button class="btn-na" id="logout-btn" style="margin-top:0.5rem;width:100%">${I18n.t('shell.logout')}</button>
           </div>
         </aside>
         <header class="app-topbar">
           <h1 class="topbar-title">${escapeHtml(pageTitle)}</h1>
           <div class="topbar-actions">
+            ${I18n.langSwitcherHtml()}
             <span class="mono text-muted" id="clock"></span>
           </div>
         </header>
@@ -112,10 +101,15 @@ const App = (() => {
     `;
   }
 
-  function initShell(activePage, pageTitle, renderContent) {
+  function initShell(activePage, pageTitleOrKey, renderContent) {
     if (!Auth.requireAuth()) return;
+    const pageTitle = pageTitleOrKey.startsWith('title.') || pageTitleOrKey.startsWith('nav.')
+      ? I18n.t(pageTitleOrKey)
+      : pageTitleOrKey;
+    document.title = `${pageTitle} — NetAtlas`;
     document.body.innerHTML = renderShell(activePage, pageTitle);
     document.getElementById('logout-btn')?.addEventListener('click', () => Auth.logout());
+    I18n.bindLangSwitcher(document);
     updateClock();
     setInterval(updateClock, 30000);
     const content = document.getElementById('page-content');
@@ -124,7 +118,7 @@ const App = (() => {
 
   function updateClock() {
     const el = document.getElementById('clock');
-    if (el) el.textContent = new Date().toLocaleTimeString('ru-RU');
+    if (el) el.textContent = new Date().toLocaleTimeString(I18n.locale());
   }
 
   function showError(container, msg) {
@@ -137,13 +131,13 @@ const App = (() => {
 
   function formatBps(bps) {
     if (!bps) return '—';
-    if (bps >= 1e9) return `${(bps / 1e9).toFixed(1)} Гбит/с`;
-    if (bps >= 1e6) return `${(bps / 1e6).toFixed(0)} Мбит/с`;
-    return `${bps} бит/с`;
+    if (bps >= 1e9) return `${(bps / 1e9).toFixed(1)} ${I18n.t('unit.gbps')}`;
+    if (bps >= 1e6) return `${(bps / 1e6).toFixed(0)} ${I18n.t('unit.mbps')}`;
+    return `${bps} ${I18n.t('unit.bps')}`;
   }
 
   return {
-    NAV, ICONS, LOGO_SVG, STATUS_LABELS,
+    ASSET_V, ICONS, LOGO_SVG, navSections,
     escapeHtml, formatDate, statusBadge, renderShell, initShell,
     showError, queryParam, formatBps, updateClock,
   };

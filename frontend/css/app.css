@@ -179,6 +179,7 @@ a:hover { color: var(--na-accent-bright); }
 }
 
 .login-panel {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -318,6 +319,44 @@ a:hover { color: var(--na-accent-bright); }
   display: flex;
   align-items: center;
   gap: 1rem;
+}
+
+.lang-switch {
+  display: inline-flex;
+  border: 1px solid var(--na-border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--na-bg-elevated, #0F172A);
+}
+
+.lang-switch--login {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+  z-index: 5;
+}
+
+.lang-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--na-text-muted, #94A3B8);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  padding: 0.35rem 0.55rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.lang-btn:hover {
+  color: var(--na-text, #F8FAFC);
+  background: rgba(0, 184, 255, 0.08);
+}
+
+.lang-btn.active {
+  color: #070B14;
+  background: var(--na-accent, #00B8FF);
 }
 
 .app-main {

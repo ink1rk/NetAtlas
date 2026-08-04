@@ -3,34 +3,34 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Устройства — NetAtlas</title>
+  <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=20260804ru">
+  <link rel="stylesheet" href="/css/app.css?v=i18n1">
 </head>
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-  <script src="/js/api.js?v=20260804ru"></script>
-  <script src="/js/auth.js?v=20260804ru"></script>
-  <script src="/js/app.js?v=20260804ru"></script>
+  <script src="/js/i18n.js?v=i18n1"></script>
+  <script src="/js/api.js?v=i18n1"></script>
+  <script src="/js/auth.js?v=i18n1"></script>
+  <script src="/js/app.js?v=i18n1"></script>
   <script>
     let page = 1;
     const pageSize = 50;
 
-    App.initShell('devices', 'Инвентарь устройств', (el) => {
+    App.initShell('devices', 'title.devices', (el) => {
       el.innerHTML = `
         <div class="panel">
           <div class="panel-header">
-            <h3>Все устройства</h3>
+            <h3>${I18n.t('devices.all')}</h3>
             <div class="d-flex gap-2">
-              <input type="text" id="filter-q" class="form-control form-control-sm" placeholder="Поиск по имени…" style="width:200px">
-              <input type="text" id="filter-vendor" class="form-control form-control-sm" placeholder="Вендор" style="width:120px">
-              <button class="btn-na" id="btn-filter">Фильтр</button>
+              <input type="text" id="filter-q" class="form-control form-control-sm" placeholder="${I18n.t('devices.search_ph')}" style="width:200px">
+              <input type="text" id="filter-vendor" class="form-control form-control-sm" placeholder="${I18n.t('devices.vendor_ph')}" style="width:120px">
+              <button class="btn-na" id="btn-filter">${I18n.t('common.filter')}</button>
             </div>
           </div>
-          <div id="devices-table" class="panel-body p-0"><p class="empty-state">Загрузка…</p></div>
+          <div id="devices-table" class="panel-body p-0"><p class="empty-state">${I18n.t('common.loading')}</p></div>
         </div>
       `;
-
       document.getElementById('btn-filter').addEventListener('click', () => { page = 1; loadDevices(el); });
       document.getElementById('filter-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') { page = 1; loadDevices(el); } });
       loadDevices(el);
@@ -45,17 +45,15 @@
           q: document.getElementById('filter-q')?.value || undefined,
           vendor: document.getElementById('filter-vendor')?.value || undefined,
         });
-
         if (!data.items?.length) {
-          container.innerHTML = '<p class="empty-state">Нет устройств по заданным фильтрам.</p>';
+          container.innerHTML = `<p class="empty-state">${I18n.t('devices.empty')}</p>`;
           return;
         }
-
         const totalPages = Math.ceil((data.total || 0) / pageSize);
         container.innerHTML = `
           <table class="data-table"><thead><tr>
-            <th>Имя узла</th><th>Вендор</th><th>Модель</th><th>Платформа</th>
-            <th>Management IP</th><th>Версия ОС</th><th>Статус</th><th>Последний контакт</th>
+            <th>${I18n.t('common.hostname')}</th><th>${I18n.t('common.vendor')}</th><th>${I18n.t('common.model')}</th><th>${I18n.t('devices.platform')}</th>
+            <th>${I18n.t('devices.mgmt_ip')}</th><th>${I18n.t('devices.os')}</th><th>${I18n.t('common.status')}</th><th>${I18n.t('devices.last_seen')}</th>
           </tr></thead>
           <tbody>${data.items.map(d => `<tr style="cursor:pointer" onclick="location.href='/pages/device-detail.html?id=${d.id}'">
             <td><strong>${App.escapeHtml(d.hostname)}</strong></td>
@@ -68,15 +66,14 @@
             <td>${App.formatDate(d.last_seen_at)}</td>
           </tr>`).join('')}</tbody></table>
           <div class="pagination-bar">
-            <span>${data.total ?? data.items.length} устройств</span>
+            <span>${I18n.t('devices.count', { n: data.total ?? data.items.length })}</span>
             <div class="d-flex gap-2">
-              <button class="btn-na" id="prev-page" ${page <= 1 ? 'disabled' : ''}>Назад</button>
-              <span>Стр. ${page} из ${totalPages || 1}</span>
-              <button class="btn-na" id="next-page" ${page >= totalPages ? 'disabled' : ''}>Далее</button>
+              <button class="btn-na" id="prev-page" ${page <= 1 ? 'disabled' : ''}>${I18n.t('common.prev')}</button>
+              <span>${I18n.t('common.page_of', { page, total: totalPages || 1 })}</span>
+              <button class="btn-na" id="next-page" ${page >= totalPages ? 'disabled' : ''}>${I18n.t('common.next')}</button>
             </div>
           </div>
         `;
-
         document.getElementById('prev-page')?.addEventListener('click', () => { page--; loadDevices(el); });
         document.getElementById('next-page')?.addEventListener('click', () => { page++; loadDevices(el); });
       } catch (err) {

@@ -128,8 +128,8 @@ services:
   frontend:
     build:
       context: ./frontend
-    image: ghcr.io/ink1rk/netatlas-frontend:1.0.0
-    # Mount sources so `git pull` updates UI without relying on a stale image layer
+    # Local tag — do not reuse stale ghcr.io ...:1.0.0 English image
+    image: netatlas-frontend:1.1.0
     volumes:
       - ./frontend/index.html:/usr/share/nginx/html/index.html:ro
       - ./frontend/pages:/usr/share/nginx/html/pages:ro

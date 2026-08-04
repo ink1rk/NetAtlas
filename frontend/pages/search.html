@@ -3,35 +3,34 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Поиск — NetAtlas</title>
+  <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=20260804ru">
+  <link rel="stylesheet" href="/css/app.css?v=i18n1">
 </head>
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-  <script src="/js/api.js?v=20260804ru"></script>
-  <script src="/js/auth.js?v=20260804ru"></script>
-  <script src="/js/app.js?v=20260804ru"></script>
+  <script src="/js/i18n.js?v=i18n1"></script>
+  <script src="/js/api.js?v=i18n1"></script>
+  <script src="/js/auth.js?v=i18n1"></script>
+  <script src="/js/app.js?v=i18n1"></script>
   <script>
-    App.initShell('search', 'Единый поиск', (el) => {
+    App.initShell('search', 'title.search', (el) => {
       el.innerHTML = `
         <div class="panel mb-3">
           <div class="panel-body">
             <form id="search-form" class="d-flex gap-2">
-              <input type="text" id="search-q" class="form-control form-na" placeholder="Поиск устройств, интерфейсов, IP-адресов…" autofocus>
-              <button type="submit" class="btn-na btn-na-primary">Найти</button>
+              <input type="text" id="search-q" class="form-control form-na" placeholder="${I18n.t('search.placeholder')}" autofocus>
+              <button type="submit" class="btn-na btn-na-primary">${I18n.t('common.search')}</button>
             </form>
           </div>
         </div>
-        <div id="search-results"><p class="empty-state">Введите запрос для поиска по инвентарю.</p></div>
+        <div id="search-results"><p class="empty-state">${I18n.t('search.hint')}</p></div>
       `;
-
       const q = App.queryParam('q');
       if (q) {
         document.getElementById('search-q').value = q;
         runSearch(q);
       }
-
       document.getElementById('search-form').addEventListener('submit', (e) => {
         e.preventDefault();
         const query = document.getElementById('search-q').value.trim();
@@ -43,46 +42,45 @@
     });
 
     function pluralResults(n) {
+      if (I18n.lang() === 'en') return I18n.t(n === 1 ? 'search.result_one' : 'search.result_many', { n });
       const mod10 = n % 10;
       const mod100 = n % 100;
-      if (mod10 === 1 && mod100 !== 11) return `${n} результат`;
-      if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${n} результата`;
-      return `${n} результатов`;
+      if (mod10 === 1 && mod100 !== 11) return I18n.t('search.result_one', { n });
+      if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return I18n.t('search.result_few', { n });
+      return I18n.t('search.result_many', { n });
     }
 
     async function runSearch(q) {
       const el = document.getElementById('search-results');
-      el.innerHTML = '<p class="empty-state">Поиск…</p>';
+      el.innerHTML = `<p class="empty-state">${I18n.t('search.searching')}</p>`;
       try {
         const data = await Api.search(q);
         const devices = data.devices || [];
         const interfaces = data.interfaces || [];
         const addresses = data.addresses || [];
         const total = devices.length + interfaces.length + addresses.length;
-
         if (!total) {
-          el.innerHTML = `<p class="empty-state">Ничего не найдено по запросу «<strong>${App.escapeHtml(q)}</strong>».</p>`;
+          el.innerHTML = `<p class="empty-state">${I18n.t('search.no_results', { q: App.escapeHtml(q) })}</p>`;
           return;
         }
-
         el.innerHTML = `
-          <p class="text-muted mb-3">${pluralResults(total)} по запросу «<strong>${App.escapeHtml(q)}</strong>»</p>
-          ${devices.length ? `<div class="search-hit-group panel mb-3"><div class="panel-header"><h3>Устройства (${devices.length})</h3></div><div class="panel-body p-0">
+          <p class="text-muted mb-3">${pluralResults(total)} — «<strong>${App.escapeHtml(q)}</strong>»</p>
+          ${devices.length ? `<div class="search-hit-group panel mb-3"><div class="panel-header"><h3>${I18n.t('search.devices', { n: devices.length })}</h3></div><div class="panel-body p-0">
             ${devices.map(d => `<a href="/pages/device-detail.html?id=${d.id}" class="search-hit d-block text-decoration-none">
               <div><strong>${App.escapeHtml(d.hostname)}</strong> <span class="mono text-muted">${App.escapeHtml(d.management_ip)}</span></div>
               <span class="text-muted">${App.escapeHtml(d.vendor)} · ${App.escapeHtml(d.platform)}</span>
             </a>`).join('')}
           </div></div>` : ''}
-          ${interfaces.length ? `<div class="search-hit-group panel mb-3"><div class="panel-header"><h3>Интерфейсы (${interfaces.length})</h3></div><div class="panel-body p-0">
+          ${interfaces.length ? `<div class="search-hit-group panel mb-3"><div class="panel-header"><h3>${I18n.t('search.interfaces', { n: interfaces.length })}</h3></div><div class="panel-body p-0">
             ${interfaces.map(i => `<div class="search-hit">
               <div><span class="mono"><strong>${App.escapeHtml(i.name)}</strong></span> ${App.escapeHtml(i.description || '')}</div>
               <span class="mono text-muted">${App.escapeHtml(i.mac)}</span>
             </div>`).join('')}
           </div></div>` : ''}
-          ${addresses.length ? `<div class="search-hit-group panel mb-3"><div class="panel-header"><h3>Адреса (${addresses.length})</h3></div><div class="panel-body p-0">
+          ${addresses.length ? `<div class="search-hit-group panel mb-3"><div class="panel-header"><h3>${I18n.t('search.addresses', { n: addresses.length })}</h3></div><div class="panel-body p-0">
             ${addresses.map(a => `<div class="search-hit">
               <div class="mono"><strong>${App.escapeHtml(a.address)}</strong> ${App.escapeHtml(a.hostname || '')}</div>
-              <span class="text-muted">${App.statusBadge(a.status)} ${a.is_conflict ? '· конфликт' : ''}</span>
+              <span class="text-muted">${App.statusBadge(a.status)} ${a.is_conflict ? '· ' + I18n.t('search.conflict') : ''}</span>
             </div>`).join('')}
           </div></div>` : ''}
         `;

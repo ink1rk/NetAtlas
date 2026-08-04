@@ -3,45 +3,45 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Снимки — NetAtlas</title>
+  <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=20260804ru">
+  <link rel="stylesheet" href="/css/app.css?v=i18n1">
 </head>
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-  <script src="/js/api.js?v=20260804ru"></script>
-  <script src="/js/auth.js?v=20260804ru"></script>
-  <script src="/js/app.js?v=20260804ru"></script>
+  <script src="/js/i18n.js?v=i18n1"></script>
+  <script src="/js/api.js?v=i18n1"></script>
+  <script src="/js/auth.js?v=i18n1"></script>
+  <script src="/js/app.js?v=i18n1"></script>
   <script>
-    App.initShell('snapshots', 'Снимки и сравнение', (el) => {
+    App.initShell('snapshots', 'title.snapshots', (el) => {
       el.innerHTML = `
         <div class="panel mb-3">
-          <div class="panel-header"><h3>Архив снимков</h3></div>
-          <div class="panel-body p-0" id="snapshots-list"><p class="empty-state">Загрузка…</p></div>
+          <div class="panel-header"><h3>${I18n.t('snap.archive')}</h3></div>
+          <div class="panel-body p-0" id="snapshots-list"><p class="empty-state">${I18n.t('common.loading')}</p></div>
         </div>
         <div class="panel">
-          <div class="panel-header"><h3>Сравнение снимков</h3></div>
+          <div class="panel-header"><h3>${I18n.t('snap.compare')}</h3></div>
           <div class="panel-body">
             <div class="row g-3 mb-3">
               <div class="col-md-5">
-                <label class="form-na"><span>Левый снимок</span>
+                <label class="form-na"><span>${I18n.t('snap.left')}</span>
                   <select id="diff-left" class="form-select"></select>
                 </label>
               </div>
               <div class="col-md-5">
-                <label class="form-na"><span>Правый снимок</span>
+                <label class="form-na"><span>${I18n.t('snap.right')}</span>
                   <select id="diff-right" class="form-select"></select>
                 </label>
               </div>
               <div class="col-md-2 d-flex align-items-end">
-                <button class="btn-na btn-na-primary w-100" id="btn-diff">Сравнить</button>
+                <button class="btn-na btn-na-primary w-100" id="btn-diff">${I18n.t('snap.compare_btn')}</button>
               </div>
             </div>
             <div id="diff-result"></div>
           </div>
         </div>
       `;
-
       loadSnapshots();
       document.getElementById('btn-diff').addEventListener('click', runDiff);
     });
@@ -52,21 +52,17 @@
       const el = document.getElementById('snapshots-list');
       try {
         snapshots = await Api.listSnapshots();
-        const leftSel = document.getElementById('diff-left');
-        const rightSel = document.getElementById('diff-right');
         const opts = snapshots.map(s =>
           `<option value="${s.id}">${App.escapeHtml(s.label || s.id?.slice(0, 8))} — ${App.formatDate(s.created_at)}</option>`
         ).join('');
-        leftSel.innerHTML = opts;
-        rightSel.innerHTML = opts;
-
+        document.getElementById('diff-left').innerHTML = opts;
+        document.getElementById('diff-right').innerHTML = opts;
         if (!snapshots.length) {
-          el.innerHTML = '<p class="empty-state">Снимков пока нет.</p>';
+          el.innerHTML = `<p class="empty-state">${I18n.t('snap.empty')}</p>`;
           return;
         }
-
         el.innerHTML = `<table class="data-table"><thead><tr>
-          <th>Метка</th><th>Создан</th><th>Контрольная сумма</th><th>Сводка</th>
+          <th>${I18n.t('snap.label')}</th><th>${I18n.t('snap.created')}</th><th>${I18n.t('snap.checksum')}</th><th>${I18n.t('snap.summary')}</th>
         </tr></thead><tbody>${snapshots.map(s => `<tr>
           <td><strong>${App.escapeHtml(s.label)}</strong></td>
           <td>${App.formatDate(s.created_at)}</td>
@@ -80,22 +76,22 @@
       const result = document.getElementById('diff-result');
       const left = document.getElementById('diff-left').value;
       const right = document.getElementById('diff-right').value;
-      if (!left || !right) { alert('Выберите два снимка'); return; }
-      result.innerHTML = '<p class="empty-state">Вычисление различий…</p>';
+      if (!left || !right) { alert(I18n.t('snap.select_two')); return; }
+      result.innerHTML = `<p class="empty-state">${I18n.t('snap.computing')}</p>`;
       try {
         const diff = await Api.diffSnapshots(left, right);
         result.innerHTML = `<div class="diff-columns">
           <div class="diff-col added">
-            <h4>Добавлено (${(diff.added || []).length})</h4>
-            ${(diff.added || []).map(i => `<div class="diff-item">${App.escapeHtml(JSON.stringify(i))}</div>`).join('') || '<p class="text-muted">Нет</p>'}
+            <h4>${I18n.t('snap.added', { n: (diff.added || []).length })}</h4>
+            ${(diff.added || []).map(i => `<div class="diff-item">${App.escapeHtml(JSON.stringify(i))}</div>`).join('') || `<p class="text-muted">${I18n.t('common.none')}</p>`}
           </div>
           <div class="diff-col removed">
-            <h4>Удалено (${(diff.removed || []).length})</h4>
-            ${(diff.removed || []).map(i => `<div class="diff-item">${App.escapeHtml(JSON.stringify(i))}</div>`).join('') || '<p class="text-muted">Нет</p>'}
+            <h4>${I18n.t('snap.removed', { n: (diff.removed || []).length })}</h4>
+            ${(diff.removed || []).map(i => `<div class="diff-item">${App.escapeHtml(JSON.stringify(i))}</div>`).join('') || `<p class="text-muted">${I18n.t('common.none')}</p>`}
           </div>
           <div class="diff-col changed">
-            <h4>Изменено (${(diff.changed || []).length})</h4>
-            ${(diff.changed || []).map(i => `<div class="diff-item">${App.escapeHtml(JSON.stringify(i))}</div>`).join('') || '<p class="text-muted">Нет</p>'}
+            <h4>${I18n.t('snap.changed', { n: (diff.changed || []).length })}</h4>
+            ${(diff.changed || []).map(i => `<div class="diff-item">${App.escapeHtml(JSON.stringify(i))}</div>`).join('') || `<p class="text-muted">${I18n.t('common.none')}</p>`}
           </div>
         </div>`;
       } catch (err) {
