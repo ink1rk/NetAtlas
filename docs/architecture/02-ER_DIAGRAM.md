@@ -32,6 +32,11 @@ erDiagram
     devices ||--o{ lldp_neighbors : reports
     devices ||--o{ fdb_entries : reports
     devices ||--o{ arp_entries : reports
+    devices ||--o{ device_relationships : relates
+    devices ||--o{ topology_history : evolves
+    vlan_objects ||--o{ devices : annotates
+    patch_panels ||--o{ cables : terminates
+    devices ||--o{ cables : endpoint
 
     discovery_seeds ||--o{ discovery_jobs : starts
     discovery_jobs ||--o{ discovery_job_targets : scans

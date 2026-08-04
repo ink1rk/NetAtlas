@@ -1,6 +1,6 @@
 # Architecture Package Complete
 
-This directory is the authoritative design baseline for NetAtlas 1.0 MVP.
+This directory is the authoritative design baseline for NetAtlas (MVP → Digital Twin NOC).
 
 ## Reading Order
 
@@ -17,5 +17,12 @@ This directory is the authoritative design baseline for NetAtlas 1.0 MVP.
 11. [10-OBSERVABILITY](10-OBSERVABILITY.md)
 12. [OpenAPI](../openapi/openapi.yaml)
 13. [ADRs](../adr/0001-architecture-decisions.md)
+
+## Product evolution docs
+
+- [DEVICE_INTELLIGENCE](../DEVICE_INTELLIGENCE.md)
+- [TOPOLOGY_ENGINE](../TOPOLOGY_ENGINE.md)
+- [MAC_TRACE](../MAC_TRACE.md)
+- [VLAN_MODEL](../VLAN_MODEL.md)
 
 Implementation must not diverge from these documents without a new ADR.

@@ -2,6 +2,22 @@
 
 All notable changes to NetAtlas are documented in this file.
 
+## [1.1.0] - 2026-08-04
+
+### Added
+
+- Device Intelligence: role detection, metadata, inspector digital-twin view
+- MAC Trace / Find Device workspace + `/trace/mac`
+- VLAN Intelligence views + `/vlans`
+- Hierarchical topology layout, role grouping, path highlighting
+- Cable Map model (`patch_panels`, `cables`) and `/cable-map`
+- Discovery Wizard scan modes: fast / deep / topology
+- Audit timeline / object history APIs for daily change awareness
+- Command palette intelligence actions (open device, find IP, show VLAN, trace MAC)
+- Integration stubs: `infrastructure/connectors/` (Zabbix, NetBox, CMDB), `plugins/` hooks
+- Docs: `DEVICE_INTELLIGENCE.md`, `TOPOLOGY_ENGINE.md`, `MAC_TRACE.md`, `VLAN_MODEL.md`
+- Alembic migration `0002_device_intelligence` (additive)
+
 ## [1.0.0] - 2026-08-03
 
 ### Added

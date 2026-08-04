@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=noc1">
+  <link rel="stylesheet" href="/css/app.css?v=di1">
   <script>
     try {
       var t = localStorage.getItem('netatlas_theme');
@@ -18,11 +18,11 @@
 </head>
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-  <script src="/js/i18n.js?v=noc1"></script>
-  <script src="/js/api.js?v=noc1"></script>
-  <script src="/js/auth.js?v=noc1"></script>
-  <script src="/js/ui.js?v=noc1"></script>
-  <script src="/js/app.js?v=noc1"></script>
+  <script src="/js/i18n.js?v=di1"></script>
+  <script src="/js/api.js?v=di1"></script>
+  <script src="/js/auth.js?v=di1"></script>
+  <script src="/js/ui.js?v=di1"></script>
+  <script src="/js/app.js?v=di1"></script>
   <script>
     const PRESETS = [
       { value: '10.0.0.0/8', label: '10.0.0.0/8' },
@@ -35,12 +35,12 @@
     App.initShell('discovery', 'title.discovery', (el) => {
       el.innerHTML = `
         <div class="page-intro">
-          <p class="subtitle">${I18n.t('disc.how')}</p>
+          <p class="subtitle">${I18n.t('disc.wizard')} — ${I18n.t('disc.how')}</p>
         </div>
         <div class="row g-3">
           <div class="col-lg-5">
             <div class="panel">
-              <div class="panel-header"><h3>${I18n.t('disc.seeds')}</h3></div>
+              <div class="panel-header"><h3>1. ${I18n.t('disc.seeds')}</h3></div>
               <div class="panel-body">
                 <p class="form-hint mb-3">${I18n.t('disc.hint')}</p>
                 <form id="seed-form" class="form-na mb-3">
@@ -63,20 +63,43 @@
                 </form>
                 <div class="form-hint mb-1">${I18n.t('disc.presets')}</div>
                 <div class="hint-row mb-3" id="cidr-presets"></div>
+                <p class="form-hint mb-3">${I18n.t('disc.credentials_hint')}</p>
                 <div id="seeds-list"><p class="empty-state">${I18n.t('common.loading')}</p></div>
               </div>
             </div>
           </div>
           <div class="col-lg-7">
-            <div class="panel">
-              <div class="panel-header panel-header--wrap">
-                <h3>${I18n.t('disc.jobs')}</h3>
+            <div class="panel mb-3">
+              <div class="panel-header"><h3>2. ${I18n.t('disc.scan_mode')}</h3></div>
+              <div class="panel-body">
+                <p class="form-hint mb-3">${I18n.t('disc.mode_hint')}</p>
+                <div class="d-flex flex-wrap gap-3 mb-3" id="scan-modes">
+                  <label class="form-check">
+                    <input class="form-check-input" type="radio" name="scan_mode" value="fast">
+                    <span class="form-check-label">${I18n.t('disc.mode_fast')}</span>
+                  </label>
+                  <label class="form-check">
+                    <input class="form-check-input" type="radio" name="scan_mode" value="deep" checked>
+                    <span class="form-check-label">${I18n.t('disc.mode_deep')}</span>
+                  </label>
+                  <label class="form-check">
+                    <input class="form-check-input" type="radio" name="scan_mode" value="topology">
+                    <span class="form-check-label">${I18n.t('disc.mode_topology')}</span>
+                  </label>
+                </div>
                 <div class="d-flex gap-2 flex-wrap">
                   <button class="btn-na btn-na-secondary" id="btn-start-selected">${I18n.t('disc.start_selected')}</button>
                   <button class="btn-na btn-na-primary" id="btn-start-job">${I18n.t('disc.start_all')}</button>
                 </div>
               </div>
+            </div>
+            <div class="panel mb-3">
+              <div class="panel-header"><h3>3. ${I18n.t('disc.jobs')}</h3></div>
               <div class="panel-body p-0" id="jobs-list"><p class="empty-state">${I18n.t('common.loading')}</p></div>
+            </div>
+            <div class="panel" id="discovery-summary-panel" hidden>
+              <div class="panel-header"><h3>${I18n.t('disc.stats')}</h3></div>
+              <div class="panel-body" id="discovery-summary"></div>
             </div>
           </div>
         </div>
@@ -117,22 +140,23 @@
         } catch (err) { Ui.toast(err.message, 'error'); }
       });
 
+      async function startWithMode(seedIds) {
+        const mode = document.querySelector('input[name="scan_mode"]:checked')?.value || 'deep';
+        const body = { scan_mode: mode };
+        if (seedIds) body.seed_ids = seedIds;
+        await Api.startJob(body);
+        Ui.toast(I18n.t('disc.job_started'), 'ok');
+        loadJobs();
+      }
+
       document.getElementById('btn-start-job').addEventListener('click', async () => {
-        try {
-          await Api.startJob({});
-          Ui.toast(I18n.t('disc.job_started'), 'ok');
-          loadJobs();
-        } catch (err) { Ui.toast(err.message, 'error'); }
+        try { await startWithMode(); } catch (err) { Ui.toast(err.message, 'error'); }
       });
 
       document.getElementById('btn-start-selected').addEventListener('click', async () => {
         const ids = [...document.querySelectorAll('.seed-check:checked')].map((el) => el.value);
         if (!ids.length) { Ui.toast(I18n.t('disc.select_seeds'), 'info'); return; }
-        try {
-          await Api.startJob({ seed_ids: ids });
-          Ui.toast(I18n.t('disc.job_started'), 'ok');
-          loadJobs();
-        } catch (err) { Ui.toast(err.message, 'error'); }
+        try { await startWithMode(ids); } catch (err) { Ui.toast(err.message, 'error'); }
       });
 
       loadSeeds();
@@ -168,19 +192,41 @@
       try { await Api.deleteSeed(id); loadSeeds(); } catch (err) { Ui.toast(err.message, 'error'); }
     }
 
+    function renderSummary(job) {
+      const panel = document.getElementById('discovery-summary-panel');
+      const el = document.getElementById('discovery-summary');
+      if (!panel || !el || !job?.stats) return;
+      const s = job.stats || {};
+      const devices = s.inventoried ?? s.devices ?? s.alive ?? 0;
+      const links = s.links ?? 0;
+      const vlans = s.vlans ?? s.vlan_count ?? '—';
+      panel.hidden = false;
+      el.innerHTML = `
+        <div class="na-metric na-metric--accent mb-2">
+          <div class="na-metric__label">${I18n.t('disc.found_summary', { devices, links, vlans })}</div>
+        </div>
+        <pre class="mono" style="font-size:12px;white-space:pre-wrap">${App.escapeHtml(JSON.stringify(s, null, 2))}</pre>
+      `;
+    }
+
     async function loadJobs() {
       const el = document.getElementById('jobs-list');
       try {
         const jobs = await Api.listJobs();
         if (!jobs?.length) { el.innerHTML = `<p class="empty-state">${I18n.t('disc.no_jobs')}</p>`; return; }
+        const latestDone = jobs.find((j) => String(j.status).toLowerCase() === 'completed');
+        if (latestDone) renderSummary(latestDone);
         el.innerHTML = `<div class="table-scroll"><table class="data-table"><thead><tr>
-          <th>ID</th><th>${I18n.t('common.status')}</th><th>${I18n.t('disc.started')}</th><th>${I18n.t('disc.finished')}</th><th>${I18n.t('disc.stats')}</th>
+          <th>ID</th><th>${I18n.t('common.status')}</th><th>${I18n.t('disc.scan_mode')}</th><th>${I18n.t('disc.started')}</th><th>${I18n.t('disc.finished')}</th><th>${I18n.t('disc.stats')}</th>
         </tr></thead><tbody>${jobs.map(j => `<tr>
           <td class="mono">${App.escapeHtml(j.id?.slice(0, 8))}…</td>
           <td>${App.statusBadge(j.status)}</td>
+          <td class="mono">${App.escapeHtml(j.config?.scan_mode || '—')}</td>
           <td>${App.formatDate(j.started_at)}</td>
           <td>${App.formatDate(j.finished_at)}</td>
-          <td class="mono">${j.stats && Object.keys(j.stats).length ? App.escapeHtml(JSON.stringify(j.stats)) : '—'}</td>
+          <td class="mono">${j.stats && Object.keys(j.stats).length
+            ? App.escapeHtml(`dev:${j.stats.inventoried ?? j.stats.alive ?? 0} lnk:${j.stats.links ?? 0}`)
+            : '—'}</td>
         </tr>`).join('')}</tbody></table></div>`;
       } catch (err) { el.innerHTML = `<div class="alert-na error m-3">${App.escapeHtml(err.message)}</div>`; }
     }

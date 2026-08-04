@@ -62,6 +62,17 @@ _SCHEMA_PATCHES = (
     "ALTER TABLE discovery_jobs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ",
     "ALTER TABLE discovery_jobs ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ",
     "ALTER TABLE discovery_jobs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+    # Device Intelligence columns (additive; safe on existing installs)
+    "ALTER TABLE devices ADD COLUMN IF NOT EXISTS network_role VARCHAR(32) NOT NULL DEFAULT 'unknown'",
+    "ALTER TABLE devices ADD COLUMN IF NOT EXISTS role_confidence DOUBLE PRECISION NOT NULL DEFAULT 0",
+    "ALTER TABLE devices ADD COLUMN IF NOT EXISTS role_reasons JSONB NOT NULL DEFAULT '[]'::jsonb",
+    "ALTER TABLE devices ADD COLUMN IF NOT EXISTS role_source VARCHAR(16) NOT NULL DEFAULT 'auto'",
+    "ALTER TABLE devices ADD COLUMN IF NOT EXISTS location VARCHAR(255)",
+    "ALTER TABLE devices ADD COLUMN IF NOT EXISTS rack VARCHAR(128)",
+    "ALTER TABLE devices ADD COLUMN IF NOT EXISTS owner VARCHAR(128)",
+    "ALTER TABLE devices ADD COLUMN IF NOT EXISTS criticality VARCHAR(32) NOT NULL DEFAULT 'normal'",
+    "ALTER TABLE devices ADD COLUMN IF NOT EXISTS description TEXT",
+    "CREATE INDEX IF NOT EXISTS ix_devices_network_role ON devices (network_role)",
 )
 
 

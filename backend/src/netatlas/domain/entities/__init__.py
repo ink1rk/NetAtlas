@@ -32,6 +32,15 @@ class Device:
     first_seen_at: datetime | None = None
     last_seen_at: datetime | None = None
     attributes: dict[str, Any] = field(default_factory=dict)
+    network_role: str = "unknown"
+    role_confidence: float = 0.0
+    role_reasons: list[Any] = field(default_factory=list)
+    role_source: str = "auto"
+    location: str | None = None
+    rack: str | None = None
+    owner: str | None = None
+    criticality: str = "normal"
+    description: str | None = None
 
 
 @dataclass(slots=True)

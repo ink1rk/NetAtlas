@@ -38,6 +38,15 @@ def _device_from_model(m: DeviceModel) -> Device:
         first_seen_at=m.first_seen_at,
         last_seen_at=m.last_seen_at,
         attributes=dict(m.attributes or {}),
+        network_role=getattr(m, "network_role", None) or "unknown",
+        role_confidence=float(getattr(m, "role_confidence", 0) or 0),
+        role_reasons=list(getattr(m, "role_reasons", None) or []),
+        role_source=getattr(m, "role_source", None) or "auto",
+        location=getattr(m, "location", None),
+        rack=getattr(m, "rack", None),
+        owner=getattr(m, "owner", None),
+        criticality=getattr(m, "criticality", None) or "normal",
+        description=getattr(m, "description", None),
     )
 
 

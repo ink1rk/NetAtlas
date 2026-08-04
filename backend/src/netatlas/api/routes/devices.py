@@ -15,6 +15,7 @@ from netatlas.infrastructure.persistence.models import (
     DeviceModel,
     InterfaceModel,
     IpAddressModel,
+    VlanModel,
 )
 from netatlas.infrastructure.persistence.repositories import (
     SqlAlchemyDeviceRepository,
@@ -307,6 +308,13 @@ async def search(
             .limit(limit)
         )
     ).scalars().all()
+    vlan_filters = [VlanModel.name.ilike(like), VlanModel.description.ilike(like)]
+    q_stripped = q.strip()
+    if q_stripped.isdigit():
+        vlan_filters.append(VlanModel.vlan_id == int(q_stripped))
+    vlans = (
+        await session.execute(select(VlanModel).where(or_(*vlan_filters)).limit(limit))
+    ).scalars().all()
     return {
         "query": q.strip(),
         "devices": [
@@ -319,6 +327,7 @@ async def search(
                 "management_ip": str(d.management_ip) if d.management_ip else None,
                 "platform": d.platform,
                 "status": d.status,
+                "network_role": getattr(d, "network_role", None),
             }
             for d in devices
         ],
@@ -342,6 +351,15 @@ async def search(
                 "is_conflict": a.is_conflict,
             }
             for a in addresses
+        ],
+        "vlans": [
+            {
+                "id": str(v.id),
+                "vlan_id": v.vlan_id,
+                "name": v.name,
+                "description": v.description,
+            }
+            for v in vlans
         ],
     }
 

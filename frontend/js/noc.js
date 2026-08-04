@@ -40,6 +40,8 @@ const Noc = (() => {
       { id: 'network', label: I18n.t('ws.network'), icon: 'share', map: true },
       { id: 'cable', label: I18n.t('ws.cable'), icon: 'cable', map: true },
       { id: 'inventory', label: I18n.t('ws.inventory'), icon: 'server', map: true },
+      { id: 'find', label: I18n.t('ws.find'), icon: 'search', map: true },
+      { id: 'vlans', label: I18n.t('ws.vlans'), icon: 'layers', map: true },
       { id: 'ipam', label: I18n.t('ws.ipam'), icon: 'network', map: true },
       { id: 'monitoring', label: I18n.t('ws.monitoring'), icon: 'activity', map: true },
       { id: 'snapshots', label: I18n.t('ws.snapshots'), icon: 'layers', map: true },
@@ -304,6 +306,18 @@ const Noc = (() => {
       renderIpamLeft(body);
       return;
     }
+    if (ws === 'find') {
+      renderFindLeft(body);
+      return;
+    }
+    if (ws === 'vlans') {
+      renderVlansLeft(body);
+      return;
+    }
+    if (ws === 'cable') {
+      renderCableLeft(body);
+      return;
+    }
     if (ws === 'snapshots') {
       renderSnapshotsLeft(body);
       return;
@@ -425,6 +439,142 @@ const Noc = (() => {
     Topology.filterNodes?.(new Set(filteredDevices().map((d) => String(d.id))));
   }
 
+  function renderFindLeft(body) {
+    body.innerHTML = `
+      <div class="noc-filter-group">
+        <div class="noc-filter-group__label">${I18n.t('noc.find_device')}</div>
+        <p class="na-hint mb-2">${I18n.t('noc.find_hint')}</p>
+        <input type="search" class="form-control form-control-sm mb-2" id="noc-find-q" placeholder="MAC / IP / hostname" />
+        <button type="button" class="na-btn na-btn--primary na-btn--sm" style="width:100%" id="noc-find-btn">${I18n.t('noc.find_run')}</button>
+      </div>
+      <div id="noc-find-result"></div>
+    `;
+    const run = async () => {
+      const q = document.getElementById('noc-find-q')?.value?.trim();
+      const box = document.getElementById('noc-find-result');
+      if (!q || !box) return;
+      box.innerHTML = `<div class="na-empty"><div class="na-spinner"></div></div>`;
+      try {
+        const res = await Api.traceMac(q);
+        if (!res.found) {
+          box.innerHTML = `<div class="na-hint">${I18n.t('noc.find_empty')}</div>`;
+          return;
+        }
+        box.innerHTML = `
+          <div class="noc-kv">
+            <div class="noc-kv__k">Device</div><div class="noc-kv__v">${App.escapeHtml(res.hostname || '—')}</div>
+            <div class="noc-kv__k">MAC</div><div class="noc-kv__v">${App.escapeHtml(res.mac || '—')}</div>
+            <div class="noc-kv__k">IP</div><div class="noc-kv__v">${App.escapeHtml(res.ip || '—')}</div>
+            <div class="noc-kv__k">Connected</div><div class="noc-kv__v">${App.escapeHtml(res.connected_hostname || '—')}</div>
+            <div class="noc-kv__k">Port</div><div class="noc-kv__v">${App.escapeHtml(res.port || '—')}</div>
+            <div class="noc-kv__k">VLAN</div><div class="noc-kv__v">${App.escapeHtml(String(res.vlan_id ?? '—'))}</div>
+          </div>
+          <div class="na-timeline">
+            ${(res.path || []).map((h, i) => `
+              <div class="na-timeline__item">
+                <div class="na-timeline__time">#${i + 1}</div>
+                <div class="na-timeline__title">${App.escapeHtml(h.hostname || h.device_id)}</div>
+                <div class="na-timeline__desc">${App.escapeHtml([h.role, h.interface].filter(Boolean).join(' · '))}</div>
+              </div>
+            `).join('')}
+          </div>
+          <button type="button" class="na-btn na-btn--secondary na-btn--sm" style="width:100%;margin-top:8px" id="noc-find-locate">${I18n.t('noc.ctx.locate')}</button>
+        `;
+        const focusId = res.connected_device_id || res.endpoint_device_id;
+        if (focusId) {
+          Topology.highlightPath?.({ hops: (res.path || []).map((h) => ({ id: h.device_id })) });
+          document.getElementById('noc-find-locate')?.addEventListener('click', () => {
+            selectObject({ type: 'device', id: focusId, data: { id: focusId, hostname: res.connected_hostname || res.hostname } });
+            Topology.fitTo?.(focusId);
+          });
+        }
+      } catch (err) {
+        box.innerHTML = `<div class="alert-na error">${App.escapeHtml(err.message)}</div>`;
+      }
+    };
+    document.getElementById('noc-find-btn')?.addEventListener('click', run);
+    document.getElementById('noc-find-q')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') run();
+    });
+  }
+
+  async function renderVlansLeft(body) {
+    body.innerHTML = `<div class="na-empty"><div class="na-spinner"></div></div>`;
+    try {
+      const data = await Api.listVlans();
+      const items = data.items || [];
+      body.innerHTML = `
+        <div class="noc-filter-group">
+          <div class="noc-filter-group__label">${I18n.t('ws.vlans')} (${items.length})</div>
+          <div class="na-tree">
+            ${items.slice(0, 60).map((v) => `
+              <button type="button" class="na-tree__item" data-vlan="${v.vlan_id}" style="width:100%">
+                <span class="mono" style="color:var(--na-accent)">VLAN ${v.vlan_id}</span>
+                <span style="margin-left:auto;font-size:10px;color:var(--na-text-muted)">${v.device_count || 0}</span>
+              </button>
+            `).join('') || `<div class="na-hint">${I18n.t('noc.empty')}</div>`}
+          </div>
+        </div>
+        <div id="noc-vlan-detail"></div>
+      `;
+      body.querySelectorAll('[data-vlan]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const detail = document.getElementById('noc-vlan-detail');
+          const vlan = items.find((x) => String(x.vlan_id) === btn.dataset.vlan);
+          if (!detail || !vlan) return;
+          detail.innerHTML = `
+            <div class="noc-filter-group">
+              <div class="noc-filter-group__label">${App.escapeHtml(vlan.name || '')}</div>
+              <div class="noc-kv">
+                <div class="noc-kv__k">ID</div><div class="noc-kv__v">${vlan.vlan_id}</div>
+                <div class="noc-kv__k">Devices</div><div class="noc-kv__v">${vlan.device_count}</div>
+                <div class="noc-kv__k">Path</div><div class="noc-kv__v">${App.escapeHtml((vlan.topology_path || []).join(' → ') || '—')}</div>
+              </div>
+              ${(vlan.devices || []).slice(0, 12).map((d) => `
+                <button type="button" class="noc-device-list__item" data-id="${App.escapeHtml(d.id)}">
+                  <span>${App.escapeHtml(d.hostname || d.id)}</span>
+                  <span class="noc-device-list__meta">${App.escapeHtml(d.role || '')}</span>
+                </button>
+              `).join('')}
+            </div>
+          `;
+          detail.querySelectorAll('[data-id]').forEach((b) => {
+            b.addEventListener('click', () => {
+              selectObject({ type: 'device', id: b.dataset.id, data: { id: b.dataset.id } });
+              Topology.fitTo?.(b.dataset.id);
+            });
+          });
+        });
+      });
+    } catch (err) {
+      body.innerHTML = `<div class="alert-na error">${App.escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  async function renderCableLeft(body) {
+    body.innerHTML = `<div class="na-empty"><div class="na-spinner"></div></div>`;
+    try {
+      const data = await Api.cableMap();
+      body.innerHTML = `
+        <div class="noc-filter-group">
+          <div class="noc-filter-group__label">${I18n.t('ws.cable')}</div>
+          <p class="na-hint mb-2">${I18n.t('noc.cable_model_hint')}</p>
+          <div class="na-metric">
+            <div class="na-metric__label">Inferred paths</div>
+            <div class="na-metric__value" style="font-size:1.25rem">${(data.inferred_paths || []).length}</div>
+          </div>
+          <div class="na-metric" style="margin-top:8px">
+            <div class="na-metric__label">Patch panels</div>
+            <div class="na-metric__value" style="font-size:1.25rem">${(data.panels || []).length}</div>
+          </div>
+          <div class="na-hint" style="margin-top:12px">${I18n.t('noc.cable_hint')}</div>
+        </div>
+      `;
+    } catch (err) {
+      body.innerHTML = `<div class="alert-na error">${App.escapeHtml(err.message)}</div>`;
+    }
+  }
+
   async function renderIpamLeft(body) {
     body.innerHTML = `<div class="na-empty"><div class="na-spinner"></div></div>`;
     try {
@@ -468,16 +618,38 @@ const Noc = (() => {
             ${list.slice(0, 12).map((s) => `
               <div class="na-timeline__item">
                 <div class="na-timeline__time">${App.formatDate(s.created_at || s.ts)}</div>
-                <div class="na-timeline__title">${App.escapeHtml(s.name || s.id || 'snapshot')}</div>
-                <div class="na-timeline__desc">${App.escapeHtml(s.description || s.kind || '')}</div>
+                <div class="na-timeline__title">${App.escapeHtml(s.label || s.name || s.id || 'snapshot')}</div>
+                <div class="na-timeline__desc">${App.escapeHtml(
+                  s.summary ? JSON.stringify(s.summary).slice(0, 80) : (s.description || '')
+                )}</div>
               </div>
             `).join('') || `<div class="na-hint">${I18n.t('noc.empty')}</div>`}
           </div>
-          <button type="button" class="na-btn na-btn--secondary na-btn--sm" style="margin-top:12px;width:100%" data-future="diff">${I18n.t('noc.future.diff')}</button>
+          <button type="button" class="na-btn na-btn--secondary na-btn--sm" style="margin-top:12px;width:100%" id="noc-snap-diff">${I18n.t('noc.compare_snaps')}</button>
+          <div id="noc-snap-diff-result" style="margin-top:8px"></div>
           <a class="na-btn na-btn--ghost na-btn--sm" style="margin-top:8px;width:100%" href="/pages/snapshots.html">${I18n.t('noc.open_full')}</a>
         </div>
       `;
-      body.querySelector('[data-future="diff"]')?.addEventListener('click', () => showFuture('diff'));
+      document.getElementById('noc-snap-diff')?.addEventListener('click', async () => {
+        const box = document.getElementById('noc-snap-diff-result');
+        if (!box || list.length < 2) {
+          Ui.toast(I18n.t('snap.select_two'), 'info');
+          return;
+        }
+        box.innerHTML = `<div class="na-hint">${I18n.t('snap.computing')}</div>`;
+        try {
+          const diff = await Api.diffSnapshots(list[1].id, list[0].id);
+          box.innerHTML = `
+            <div class="noc-kv">
+              <div class="noc-kv__k">ADDED</div><div class="noc-kv__v">${(diff.added || []).length}</div>
+              <div class="noc-kv__k">REMOVED</div><div class="noc-kv__v">${(diff.removed || []).length}</div>
+              <div class="noc-kv__k">CHANGED</div><div class="noc-kv__v">${(diff.changed || []).length}</div>
+            </div>
+          `;
+        } catch (err) {
+          box.innerHTML = `<div class="alert-na error">${App.escapeHtml(err.message)}</div>`;
+        }
+      });
     } catch (err) {
       body.innerHTML = `<div class="alert-na error">${App.escapeHtml(err.message)}</div>`;
     }
@@ -598,24 +770,49 @@ const Noc = (() => {
     }
 
     if (state.inspectorTab === 'overview') {
+      body.innerHTML = `<div class="na-empty"><div class="na-spinner"></div></div>`;
+      let intel = null;
+      try { intel = await Api.deviceIntelligence(sel.id); } catch { /* fallback to basic */ }
+      const role = intel?.role || {
+        role: d.network_role || d.role || 'unknown',
+        confidence: d.role_confidence || 0,
+        reasons: d.role_reasons || [],
+      };
+      const meta = intel?.metadata || {};
+      const identity = intel?.identity || d;
       body.innerHTML = `
+        <div class="na-badge na-badge--info" style="margin-bottom:10px">${App.escapeHtml(String(role.role || 'unknown').toUpperCase())}
+          · ${Math.round(role.confidence || 0)}%</div>
+        <div class="na-hint" style="margin-bottom:12px">${(role.reasons || []).slice(0, 4).map((r) => App.escapeHtml(r)).join(' · ') || I18n.t('noc.role_auto')}</div>
         <div class="noc-kv">
-          <div class="noc-kv__k">${I18n.t('common.status')}</div><div class="noc-kv__v">${App.statusBadge(d.status)}</div>
-          <div class="noc-kv__k">${I18n.t('common.vendor')}</div><div class="noc-kv__v">${App.escapeHtml(d.vendor || '—')}</div>
-          <div class="noc-kv__k">${I18n.t('common.model')}</div><div class="noc-kv__v">${App.escapeHtml(d.model || '—')}</div>
-          <div class="noc-kv__k">${I18n.t('devices.mgmt_ip')}</div><div class="noc-kv__v">${App.escapeHtml(d.management_ip || d.mgmt_ip || '—')}</div>
-          <div class="noc-kv__k">${I18n.t('device.serial')}</div><div class="noc-kv__v">${App.escapeHtml(d.serial || '—')}</div>
-          <div class="noc-kv__k">${I18n.t('device.firmware')}</div><div class="noc-kv__v">${App.escapeHtml(d.firmware || '—')}</div>
-          <div class="noc-kv__k">${I18n.t('device.last_seen')}</div><div class="noc-kv__v">${App.formatDate(d.last_seen_at)}</div>
+          <div class="noc-kv__k">${I18n.t('common.status')}</div><div class="noc-kv__v">${App.statusBadge(identity.status || d.status)}</div>
+          <div class="noc-kv__k">${I18n.t('common.vendor')}</div><div class="noc-kv__v">${App.escapeHtml(identity.vendor || d.vendor || '—')}</div>
+          <div class="noc-kv__k">${I18n.t('common.model')}</div><div class="noc-kv__v">${App.escapeHtml(identity.model || d.model || '—')}</div>
+          <div class="noc-kv__k">${I18n.t('devices.mgmt_ip')}</div><div class="noc-kv__v">${App.escapeHtml(identity.management_ip || d.management_ip || '—')}</div>
+          <div class="noc-kv__k">MAC</div><div class="noc-kv__v">${App.escapeHtml(identity.management_mac || d.management_mac || '—')}</div>
+          <div class="noc-kv__k">${I18n.t('device.serial')}</div><div class="noc-kv__v">${App.escapeHtml(identity.serial || d.serial || '—')}</div>
+          <div class="noc-kv__k">${I18n.t('device.firmware')}</div><div class="noc-kv__v">${App.escapeHtml(identity.firmware || d.firmware || '—')}</div>
+          <div class="noc-kv__k">Location</div><div class="noc-kv__v">${App.escapeHtml(meta.location || '—')}</div>
+          <div class="noc-kv__k">Rack</div><div class="noc-kv__v">${App.escapeHtml(meta.rack || '—')}</div>
+          <div class="noc-kv__k">Owner</div><div class="noc-kv__v">${App.escapeHtml(meta.owner || '—')}</div>
+          <div class="noc-kv__k">${I18n.t('device.last_seen')}</div><div class="noc-kv__v">${App.formatDate(intel?.lifecycle?.last_seen_at || d.last_seen_at)}</div>
         </div>
         <div class="noc-inspector__actions">
           <button type="button" class="na-btn na-btn--primary na-btn--sm" data-act="focus">${state.focusMode ? I18n.t('noc.clear_focus') : I18n.t('noc.focus_mode')}</button>
+          <button type="button" class="na-btn na-btn--secondary na-btn--sm" data-act="detect">${I18n.t('noc.detect_role')}</button>
           <button type="button" class="na-btn na-btn--secondary na-btn--sm" data-act="trace">${I18n.t('noc.ctx.trace')}</button>
           <button type="button" class="na-btn na-btn--secondary na-btn--sm" data-act="export">${I18n.t('noc.ctx.export')}</button>
           <button type="button" class="na-btn na-btn--ghost na-btn--sm" data-act="full">${I18n.t('noc.open_full')}</button>
         </div>
       `;
       body.querySelector('[data-act="focus"]')?.addEventListener('click', toggleFocusMode);
+      body.querySelector('[data-act="detect"]')?.addEventListener('click', async () => {
+        try {
+          const r = await Api.detectDeviceRole(sel.id);
+          Ui.toast(`${r.auto_detected_role} · ${r.confidence}%`, 'success', { title: I18n.t('noc.detect_role') });
+          renderInspector();
+        } catch (err) { Ui.toast(err.message, 'error'); }
+      });
       body.querySelector('[data-act="trace"]')?.addEventListener('click', () => startTracePath(sel.id));
       body.querySelector('[data-act="export"]')?.addEventListener('click', () => exportSelection(sel));
       body.querySelector('[data-act="full"]')?.addEventListener('click', () => {
@@ -674,17 +871,30 @@ const Noc = (() => {
     }
 
     if (state.inspectorTab === 'history') {
-      const related = state.events.filter((e) =>
-        String(e.device_id || '') === String(sel.id)
-        || String(e.message || '').includes(String(d.hostname || ''))
-      ).slice(0, 20);
-      body.innerHTML = related.length ? related.map(eventRowHtml).join('') : `
-        <div class="na-hint">${I18n.t('noc.history_placeholder')}</div>
-        <div class="noc-future-card" style="margin-top:12px">
-          <div class="noc-future-card__title">${I18n.t('noc.future.diff')}</div>
-          <div class="noc-future-card__desc">${I18n.t('noc.future.diff_desc')}</div>
-        </div>
-      `;
+      body.innerHTML = `<div class="na-empty"><div class="na-spinner"></div></div>`;
+      try {
+        const hist = await Api.objectHistory('device', sel.id);
+        const life = hist.lifecycle || {};
+        const changes = hist.changes || [];
+        body.innerHTML = `
+          <div class="noc-kv">
+            <div class="noc-kv__k">Created</div><div class="noc-kv__v">${App.formatDate(life.created_at)}</div>
+            <div class="noc-kv__k">First seen</div><div class="noc-kv__v">${App.formatDate(life.first_seen_at)}</div>
+            <div class="noc-kv__k">Last seen</div><div class="noc-kv__v">${App.formatDate(life.last_seen_at)}</div>
+            <div class="noc-kv__k">Firmware</div><div class="noc-kv__v">${App.escapeHtml(life.firmware || '—')}</div>
+          </div>
+          ${changes.length ? changes.map((c) => `
+            <div class="noc-event-row">
+              <div class="noc-event-row__time">${App.escapeHtml(formatTime(c.ts))}</div>
+              <div class="noc-event-row__kind noc-event-row__kind--change">${App.escapeHtml(c.action || 'change')}</div>
+              <div class="noc-event-row__msg">${App.escapeHtml(JSON.stringify(c.details || {}))}</div>
+              <div></div>
+            </div>
+          `).join('') : `<div class="na-hint">${I18n.t('noc.history_placeholder')}</div>`}
+        `;
+      } catch {
+        body.innerHTML = `<div class="na-hint">${I18n.t('noc.history_placeholder')}</div>`;
+      }
     }
   }
 
@@ -771,13 +981,14 @@ const Noc = (() => {
     state.status.wsStatus = 'live';
     renderStatusBar();
     try {
-      const [devicesPage, graph, jobs, alerts, snaps, obs] = await Promise.all([
+      const [devicesPage, graph, jobs, alerts, snaps, obs, audit] = await Promise.all([
         Api.listDevices({ page_size: 200 }).catch(() => ({ items: [], total: 0 })),
         Api.topologyGraph().catch(() => ({ nodes: [], edges: [] })),
         Api.listJobs().catch(() => []),
         Api.get('/observability/alerts', { page_size: 20 }).catch(() => null),
         Api.listSnapshots().catch(() => []),
         Api.get('/observability/status').catch(() => null),
+        Api.auditTimeline({ limit: 30 }).catch(() => ({ items: [] })),
       ]);
 
       state.devices = devicesPage.items || [];
@@ -801,17 +1012,18 @@ const Noc = (() => {
       const alertItems = alerts?.items || alerts?.alerts || [];
       const snapList = Array.isArray(snaps) ? snaps : (snaps.items || []);
 
+      const auditItems = audit?.items || audit?.events || (Array.isArray(audit) ? audit : []);
       state.events = [
         ...jobList.slice(0, 15).map((j) => ({
           kind: 'discovery',
           ts: j.finished_at || j.started_at || j.created_at,
-          message: `${j.status || 'job'} — ${j.seed_cidr || j.name || j.id || 'discovery'}`,
+          message: `${j.status || 'job'} — ${j.config?.scan_mode || j.seed_cidr || j.name || j.id || 'discovery'}`,
           device_id: null,
         })),
         ...snapList.slice(0, 10).map((s) => ({
           kind: 'snapshot',
           ts: s.created_at || s.ts,
-          message: s.name || s.id || 'snapshot',
+          message: s.label || s.name || s.id || 'snapshot',
           device_id: null,
         })),
         ...alertItems.slice(0, 15).map((a) => ({
@@ -821,13 +1033,18 @@ const Noc = (() => {
           device_id: a.device_id,
           severity: a.severity,
         })),
+        ...auditItems.slice(0, 20).map((e) => ({
+          kind: e.kind === 'snapshot' ? 'snapshot' : 'change',
+          ts: e.ts || e.created_at,
+          message: e.message || e.action || e.summary || 'change',
+          device_id: e.resource_type === 'device' ? e.resource_id : (e.object_id || e.device_id || null),
+        })),
         ...state.devices.filter((d) => d.updated_at || d.last_seen_at).slice(0, 10).map((d) => ({
           kind: 'change',
           ts: d.updated_at || d.last_seen_at,
           message: `${d.hostname || d.id} — ${d.status || 'updated'}`,
           device_id: d.id,
         })),
-        // Architecture placeholder for backups feed
         {
           kind: 'backup',
           ts: null,
@@ -870,6 +1087,8 @@ const Noc = (() => {
             <div class="noc-map__badge"><span class="live-dot"></span> ${I18n.t('dash.live_map')}</div>
             <span class="noc-map__badge" id="noc-ws-badge">${I18n.t('ws.network')}</span>
             <button type="button" class="na-btn na-btn--secondary na-btn--sm" id="noc-btn-fit">${I18n.t('topo.fit')}</button>
+            <button type="button" class="na-btn na-btn--secondary na-btn--sm" id="noc-btn-hierarchy">${I18n.t('topo.hierarchy')}</button>
+            <button type="button" class="na-btn na-btn--secondary na-btn--sm" id="noc-btn-group">${I18n.t('topo.group')}</button>
             <button type="button" class="na-btn na-btn--secondary na-btn--sm" id="noc-btn-relayout">${I18n.t('topo.relayout')}</button>
             <button type="button" class="na-btn na-btn--ghost na-btn--sm" id="noc-btn-focus">${I18n.t('noc.focus_mode')}</button>
             <button type="button" class="na-btn na-btn--ghost na-btn--sm" id="noc-btn-filters">${I18n.t('noc.filters')}</button>
@@ -933,6 +1152,11 @@ const Noc = (() => {
       document.getElementById('noc-workspace')?.classList.toggle('is-left-open-mobile');
     });
     document.getElementById('noc-btn-fit')?.addEventListener('click', () => Topology.fit());
+    document.getElementById('noc-btn-hierarchy')?.addEventListener('click', () => {
+      Topology.expandRole?.();
+      Topology.applyHierarchicalLayout?.();
+    });
+    document.getElementById('noc-btn-group')?.addEventListener('click', () => Topology.groupByRole?.());
     document.getElementById('noc-btn-relayout')?.addEventListener('click', () => Topology.relayout());
     document.getElementById('noc-btn-focus')?.addEventListener('click', toggleFocusMode);
     document.getElementById('noc-bottom-toggle')?.addEventListener('click', () => {
@@ -962,6 +1186,27 @@ const Noc = (() => {
     });
   }
 
+  async function applyDeepLinks() {
+    const q = App.queryParam('q');
+    const vlan = App.queryParam('vlan');
+    const device = App.queryParam('device');
+    if (device) {
+      await selectObject({ type: 'device', id: device, data: { id: device } });
+      Topology.fitTo?.(device);
+    }
+    if (state.workspace === 'find' && q) {
+      const input = document.getElementById('noc-find-q');
+      if (input) {
+        input.value = q;
+        document.getElementById('noc-find-btn')?.click();
+      }
+    }
+    if (state.workspace === 'vlans' && vlan) {
+      const btn = document.querySelector(`[data-vlan="${CSS.escape(vlan)}"]`);
+      btn?.click();
+    }
+  }
+
   async function mount(container, options = {}) {
     const wsParam = App.queryParam('ws') || options.workspace || 'network';
     state.workspace = workspaces().some((w) => w.id === wsParam) ? wsParam : 'network';
@@ -973,6 +1218,8 @@ const Noc = (() => {
     renderStatusBar();
     renderInspector();
 
+    // Best-effort role enrichment for hierarchical map
+    try { await Api.detectAllRoles(); } catch { /* optional */ }
     const data = await refreshData();
     await Topology.init('noc-cy', {
       graph: data.graph,
@@ -999,6 +1246,8 @@ const Noc = (() => {
       },
       onBackgroundClick: () => clearSelection(),
     });
+
+    await applyDeepLinks();
 
     // Poll status periodically (no websocket backend — simulate ops status)
     setInterval(() => {

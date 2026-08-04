@@ -12,7 +12,7 @@ from fastapi.responses import ORJSONResponse
 
 from netatlas import __version__
 from netatlas.api.middleware import LoginRateLimitMiddleware, RequestIdMiddleware
-from netatlas.api.routes import auth, devices, observability, topology
+from netatlas.api.routes import auth, devices, intelligence, observability, topology
 from netatlas.api.routes.ops import (
     credentials_router,
     discovery_router,
@@ -102,6 +102,7 @@ def create_app() -> FastAPI:
     app.include_router(system_router, prefix=prefix)
     app.include_router(auth.router, prefix=prefix)
     app.include_router(devices.router, prefix=prefix)
+    app.include_router(intelligence.router, prefix=prefix)
     app.include_router(topology.router, prefix=prefix)
     app.include_router(discovery_router, prefix=prefix)
     app.include_router(snapshots_router, prefix=prefix)

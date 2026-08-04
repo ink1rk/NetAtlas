@@ -2,7 +2,7 @@
  * NetAtlas shared application shell & utilities
  */
 const App = (() => {
-  const ASSET_V = 'noc1';
+  const ASSET_V = 'di1';
   const THEME_KEY = 'netatlas_theme';
   const SIDEBAR_KEY = 'netatlas_sidebar_collapsed';
 
@@ -12,6 +12,8 @@ const App = (() => {
         { id: 'dashboard', label: I18n.t('ws.network'), href: '/pages/dashboard.html?ws=network', icon: 'share' },
         { id: 'cable', label: I18n.t('ws.cable'), href: '/pages/dashboard.html?ws=cable', icon: 'cable' },
         { id: 'devices', label: I18n.t('ws.inventory'), href: '/pages/dashboard.html?ws=inventory', icon: 'server' },
+        { id: 'find', label: I18n.t('ws.find'), href: '/pages/dashboard.html?ws=find', icon: 'search' },
+        { id: 'vlans', label: I18n.t('ws.vlans'), href: '/pages/dashboard.html?ws=vlans', icon: 'layers' },
         { id: 'ipam', label: I18n.t('ws.ipam'), href: '/pages/dashboard.html?ws=ipam', icon: 'network' },
         { id: 'monitoring', label: I18n.t('ws.monitoring'), href: '/pages/dashboard.html?ws=monitoring', icon: 'activity' },
         { id: 'snapshots', label: I18n.t('ws.snapshots'), href: '/pages/dashboard.html?ws=snapshots', icon: 'layers' },
@@ -390,6 +392,38 @@ const App = (() => {
         run: () => { window.location.href = '/pages/dashboard.html?ws=network'; },
       },
       {
+        group: I18n.t('cmd.intelligence'),
+        id: 'act-open-device',
+        label: I18n.t('cmd.open_device'),
+        meta: 'open device <host|ip>',
+        icon: 'server',
+        run: (typed) => runIntelligenceCommand('open', typed),
+      },
+      {
+        group: I18n.t('cmd.intelligence'),
+        id: 'act-find-ip',
+        label: I18n.t('cmd.find_ip'),
+        meta: 'find IP <addr>',
+        icon: 'search',
+        run: (typed) => runIntelligenceCommand('ip', typed),
+      },
+      {
+        group: I18n.t('cmd.intelligence'),
+        id: 'act-show-vlan',
+        label: I18n.t('cmd.show_vlan'),
+        meta: 'show VLAN <id>',
+        icon: 'layers',
+        run: (typed) => runIntelligenceCommand('vlan', typed),
+      },
+      {
+        group: I18n.t('cmd.intelligence'),
+        id: 'act-trace-mac',
+        label: I18n.t('cmd.trace_mac'),
+        meta: 'trace MAC <addr>',
+        icon: 'cable',
+        run: (typed) => runIntelligenceCommand('mac', typed),
+      },
+      {
         group: I18n.t('cmd.actions'),
         id: 'act-focus',
         label: I18n.t('noc.focus_mode'),
@@ -454,6 +488,71 @@ const App = (() => {
     return [...actions, ...nav];
   }
 
+  function parseCmdQuery(raw) {
+    const q = String(raw || '').trim();
+    const lower = q.toLowerCase();
+    const patterns = [
+      { kind: 'mac', re: /^(?:trace\s+mac|mac|find\s+mac)\s+(.+)$/i },
+      { kind: 'ip', re: /^(?:find\s+ip|ip)\s+(.+)$/i },
+      { kind: 'vlan', re: /^(?:show\s+vlan|vlan)\s+(\d+)$/i },
+      { kind: 'open', re: /^(?:open\s+device|open|device)\s+(.+)$/i },
+    ];
+    for (const p of patterns) {
+      const m = q.match(p.re);
+      if (m) return { kind: p.kind, value: m[1].trim() };
+    }
+    // Heuristics when user types value directly
+    if (/^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i.test(q) || /^[0-9a-f]{12}$/i.test(q)) {
+      return { kind: 'mac', value: q };
+    }
+    if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(q)) return { kind: 'ip', value: q };
+    if (/^vlan\s*\d+$/i.test(lower) || /^\d{1,4}$/.test(q)) {
+      const id = q.replace(/[^\d]/g, '');
+      if (id) return { kind: 'vlan', value: id };
+    }
+    return { kind: 'search', value: q };
+  }
+
+  async function runIntelligenceCommand(kind, typedOverride) {
+    const typed = (typedOverride ?? document.getElementById('na-cmd-input')?.value ?? '').trim();
+    const parsed = parseCmdQuery(typed);
+    let value = '';
+    if (parsed.kind === kind) value = parsed.value || '';
+    else if (parsed.kind === 'search' && parsed.value) value = parsed.value;
+
+    if (kind === 'mac') {
+      const q = value || prompt(I18n.t('cmd.trace_mac'), '') || '';
+      if (!q) return;
+      window.location.href = `/pages/dashboard.html?ws=find&q=${encodeURIComponent(q)}`;
+      return;
+    }
+    if (kind === 'ip') {
+      const q = value || prompt(I18n.t('cmd.find_ip'), '') || '';
+      if (!q) return;
+      window.location.href = `/pages/dashboard.html?ws=find&q=${encodeURIComponent(q)}`;
+      return;
+    }
+    if (kind === 'vlan') {
+      const q = value || prompt(I18n.t('cmd.show_vlan'), '') || '';
+      if (!q) return;
+      window.location.href = `/pages/dashboard.html?ws=vlans&vlan=${encodeURIComponent(q)}`;
+      return;
+    }
+    if (kind === 'open') {
+      const q = value || prompt(I18n.t('cmd.open_device'), '') || '';
+      if (!q) return;
+      try {
+        const res = await Api.search(q, { limit: 5 });
+        const d = (res.devices || [])[0];
+        if (d?.id) {
+          window.location.href = `/pages/dashboard.html?ws=inventory&device=${encodeURIComponent(d.id)}`;
+          return;
+        }
+      } catch { /* fall through */ }
+      window.location.href = `/pages/search.html?q=${encodeURIComponent(q)}`;
+    }
+  }
+
   let cmdState = { open: false, active: 0, items: [], mode: 'all' };
 
   function openCommandPalette(mode = 'all') {
@@ -501,14 +600,21 @@ const App = (() => {
   }
 
   function filteredCmdItems() {
-    const q = (document.getElementById('na-cmd-input')?.value || '').trim().toLowerCase();
+    const raw = (document.getElementById('na-cmd-input')?.value || '').trim();
+    const q = raw.toLowerCase();
     const all = commandItems(cmdState.mode);
     if (!q) return all;
-    return all.filter((it) =>
+    const parsed = parseCmdQuery(raw);
+    const scored = all.filter((it) =>
       it.label.toLowerCase().includes(q)
       || (it.meta || '').toLowerCase().includes(q)
       || (it.group || '').toLowerCase().includes(q)
+      || (parsed.kind === 'mac' && it.id === 'act-trace-mac')
+      || (parsed.kind === 'ip' && it.id === 'act-find-ip')
+      || (parsed.kind === 'vlan' && it.id === 'act-show-vlan')
+      || (parsed.kind === 'open' && it.id === 'act-open-device')
     );
+    return scored;
   }
 
   function renderCommandList() {
@@ -547,8 +653,9 @@ const App = (() => {
   function runCmdItem(idx) {
     const it = cmdState.items[idx];
     if (!it) return;
+    const typed = (document.getElementById('na-cmd-input')?.value || '').trim();
     closeCommandPalette();
-    it.run();
+    if (typeof it.run === 'function') it.run(typed);
   }
 
   function onCmdKeydown(e) {
