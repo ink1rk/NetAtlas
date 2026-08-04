@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NetAtlas</title>
+  <title>NetAtlas NOC</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=eds1">
+  <link rel="stylesheet" href="/css/app.css?v=noc1">
   <script>
     try {
       var t = localStorage.getItem('netatlas_theme');
@@ -18,196 +18,25 @@
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
   <script src="/static/vendor/cytoscape/cytoscape.min.js"></script>
-  <script src="/js/i18n.js?v=eds1"></script>
-  <script src="/js/api.js?v=eds1"></script>
-  <script src="/js/auth.js?v=eds1"></script>
-  <script src="/js/topology.js?v=eds1"></script>
-  <script src="/js/ui.js?v=eds1"></script>
-  <script src="/js/app.js?v=eds1"></script>
+  <script src="/js/i18n.js?v=noc1"></script>
+  <script src="/js/api.js?v=noc1"></script>
+  <script src="/js/auth.js?v=noc1"></script>
+  <script src="/js/topology.js?v=noc1"></script>
+  <script src="/js/ui.js?v=noc1"></script>
+  <script src="/js/noc.js?v=noc1"></script>
+  <script src="/js/app.js?v=noc1"></script>
   <script>
-    App.initShell('dashboard', 'title.dashboard', async (el) => {
-      el.classList.add('app-main--dashboard');
-      el.innerHTML = `
-        <div class="dash-layout">
-          <section class="dash-map-panel" aria-label="${I18n.t('dash.live_map')}">
-            <div class="dash-map-panel__header">
-              <h2 class="dash-map-panel__title">
-                <span class="live-dot" aria-hidden="true"></span>
-                ${I18n.t('dash.live_map')}
-              </h2>
-              <div class="dash-map-panel__tools">
-                <div class="na-quick-actions" id="dash-quick">
-                  <button type="button" class="na-quick-action" data-href="/pages/discovery.html">${I18n.t('cmd.start_discovery')}</button>
-                  <button type="button" class="na-quick-action" data-href="/pages/devices.html">${I18n.t('cmd.browse_devices')}</button>
-                  <button type="button" class="na-quick-action" data-action="fit">${I18n.t('topo.fit')}</button>
-                </div>
-                <a href="/pages/topology.html" class="na-btn na-btn--secondary na-btn--sm">${I18n.t('dash.fullscreen')}</a>
-              </div>
-            </div>
-            <div class="dash-map-stage">
-              <div id="dash-map" class="dash-map-container"></div>
-            </div>
-          </section>
-
-          <aside class="dash-side" aria-label="${I18n.t('dash.analytics')}">
-            <div class="dash-metrics" id="dash-stats">
-              <div class="na-metric na-metric--accent">
-                <div class="na-metric__label">${I18n.t('dash.devices')}</div>
-                <div class="na-metric__value" data-k="devices">—</div>
-              </div>
-              <div class="na-metric">
-                <div class="na-metric__label">${I18n.t('dash.links')}</div>
-                <div class="na-metric__value" data-k="links">—</div>
-              </div>
-              <div class="na-metric">
-                <div class="na-metric__label">${I18n.t('dash.prefixes')}</div>
-                <div class="na-metric__value" data-k="prefixes">—</div>
-              </div>
-              <div class="na-metric na-metric--danger" id="metric-alerts">
-                <div class="na-metric__label">${I18n.t('dash.alerts')}</div>
-                <div class="na-metric__value" data-k="alerts">—</div>
-              </div>
-            </div>
-
-            <div class="dash-panel">
-              <div class="dash-panel__header">
-                <h3 class="dash-panel__title">${I18n.t('dash.infra_health')}</h3>
-                <a href="/pages/observability.html" class="na-btn na-btn--ghost na-btn--sm">${I18n.t('dash.observability')}</a>
-              </div>
-              <div class="dash-panel__body" id="health-strip">
-                <span class="na-status na-status--unknown"><span class="na-status__dot"></span>${I18n.t('dash.loading_health')}</span>
-              </div>
-            </div>
-
-            <div class="dash-panel" style="flex:1;min-height:0;display:flex;flex-direction:column">
-              <div class="dash-panel__header">
-                <h3 class="dash-panel__title">${I18n.t('dash.recent_alerts')}</h3>
-              </div>
-              <div class="dash-panel__body dash-alerts" id="dash-alerts">
-                <div class="na-empty" style="padding:1rem">
-                  <div class="na-empty__desc">${I18n.t('dash.loading_health')}</div>
-                </div>
-              </div>
-            </div>
-
-            <div class="dash-panel">
-              <div class="dash-panel__header">
-                <h3 class="dash-panel__title">${I18n.t('dash.activity')}</h3>
-              </div>
-              <div class="dash-panel__body">
-                <div class="na-timeline" id="dash-timeline"></div>
-              </div>
-            </div>
-          </aside>
-        </div>
-      `;
-
-      el.querySelectorAll('#dash-quick [data-href]').forEach((btn) => {
-        btn.addEventListener('click', () => { window.location.href = btn.dataset.href; });
-      });
-      el.querySelector('#dash-quick [data-action="fit"]')?.addEventListener('click', () => Topology.fit());
-
-      Topology.init('dash-map', { compact: true, minimap: true, padding: 28 });
-
-      try {
-        const [devices, graph, prefixes, obsStatus, alerts] = await Promise.all([
-          Api.listDevices({ page_size: 1 }),
-          Api.topologyGraph(),
-          Api.listPrefixes().catch(() => []),
-          Api.get('/observability/status').catch(() => null),
-          Api.get('/observability/alerts', { page_size: 8 }).catch(() => null),
-        ]);
-
-        const set = (k, v) => {
-          const node = el.querySelector(`[data-k="${k}"]`);
-          if (node) node.textContent = v;
-        };
-
-        set('devices', devices.total ?? devices.items?.length ?? 0);
-        set('links', (graph.edges || []).length);
-        set('prefixes', Array.isArray(prefixes) ? prefixes.length : 0);
-
-        const alertCount = alerts?.total ?? obsStatus?.triggers_in_problem ?? 0;
-        set('alerts', alertCount);
-        const alertMetric = el.querySelector('#metric-alerts');
-        if (alertMetric) {
-          alertMetric.classList.toggle('na-metric--danger', alertCount > 0);
-          alertMetric.classList.toggle('na-metric--success', alertCount === 0);
-        }
-
-        const problems = obsStatus?.triggers_in_problem ?? 0;
-        const events = obsStatus?.events_stored ?? 0;
-        const syslogPort = obsStatus?.syslog?.udp_port;
-        const strip = el.querySelector('#health-strip');
-        strip.innerHTML = `
-          <div style="display:flex;flex-direction:column;gap:0.65rem">
-            <span class="na-status ${problems > 0 ? 'na-status--down' : 'na-status--up'}">
-              <span class="na-status__dot"></span>
-              ${I18n.t('dash.trigger_problems', { n: problems })}
-            </span>
-            <span class="na-status na-status--unknown">
-              <span class="na-status__dot"></span>
-              ${I18n.t('dash.syslog_events', { n: events })}
-            </span>
-            ${syslogPort ? `<span class="na-status na-status--unknown"><span class="na-status__dot"></span>Syslog UDP <span class="mono">:${App.escapeHtml(String(syslogPort))}</span></span>` : ''}
-            <span class="na-status na-status--up">
-              <span class="na-status__dot"></span>
-              ${I18n.t('dash.nodes_mapped', { n: (graph.nodes || []).length })}
-            </span>
-          </div>
-        `;
-
-        const alertItems = alerts?.items || alerts?.alerts || [];
-        const alertsEl = el.querySelector('#dash-alerts');
-        if (!alertItems.length) {
-          alertsEl.innerHTML = `<div class="na-empty" style="padding:1rem"><div class="na-empty__desc">${I18n.t('dash.no_alerts')}</div></div>`;
-        } else {
-          alertsEl.innerHTML = alertItems.slice(0, 6).map((a) => {
-            const sev = String(a.severity || a.level || 'warning').toLowerCase();
-            const cls = sev.includes('crit') || sev.includes('high') ? 'critical' : sev.includes('info') ? 'info' : 'warning';
-            return `
-              <div class="na-alert-card na-alert-card--${cls}">
-                <div class="na-alert-card__bar"></div>
-                <div>
-                  <div class="na-alert-card__title">${App.escapeHtml(a.name || a.title || I18n.t('shell.notif_alert'))}</div>
-                  <div class="na-alert-card__desc">${App.escapeHtml(a.message || a.description || a.severity || '')}</div>
-                </div>
-                <div class="na-alert-card__time">${App.escapeHtml(App.formatDate(a.created_at || a.ts))}</div>
-              </div>
-            `;
-          }).join('');
-        }
-
-        const timeline = el.querySelector('#dash-timeline');
-        const nodes = (graph.nodes || []).slice(0, 4);
-        timeline.innerHTML = [
-          {
-            time: I18n.t('dash.now'),
-            title: I18n.t('dash.timeline_map'),
-            desc: I18n.t('dash.nodes_mapped', { n: (graph.nodes || []).length }),
-          },
-          {
-            time: I18n.t('dash.now'),
-            title: I18n.t('dash.timeline_inventory'),
-            desc: I18n.t('dash.devices') + ': ' + (devices.total ?? 0),
-          },
-          ...nodes.map((n) => ({
-            time: n.vendor || n.platform || 'node',
-            title: n.hostname || n.label || n.id,
-            desc: n.mgmt_ip || n.ip || n.role || '',
-          })),
-        ].slice(0, 5).map((item) => `
-          <div class="na-timeline__item">
-            <div class="na-timeline__time">${App.escapeHtml(String(item.time))}</div>
-            <div class="na-timeline__title">${App.escapeHtml(String(item.title))}</div>
-            <div class="na-timeline__desc">${App.escapeHtml(String(item.desc))}</div>
-          </div>
-        `).join('');
-      } catch (err) {
-        const strip = el.querySelector('#health-strip');
-        if (strip) strip.innerHTML = `<span class="na-status na-status--down"><span class="na-status__dot"></span>${App.escapeHtml(err.message)}</span>`;
-      }
-    });
+    const ws = App.queryParam('ws') || 'network';
+    const titleKey = ({
+      network: 'ws.network',
+      cable: 'ws.cable',
+      inventory: 'ws.inventory',
+      ipam: 'ws.ipam',
+      monitoring: 'ws.monitoring',
+      snapshots: 'ws.snapshots',
+      backups: 'ws.backups',
+    })[ws] || 'ws.network';
+    App.initNocShell(ws, titleKey);
   </script>
 </body>
 </html>

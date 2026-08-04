@@ -57,6 +57,13 @@ a:hover { color: var(--na-accent-bright); }
   grid-template-columns: var(--na-sidebar-w-collapsed) 1fr;
 }
 
+.app-shell--noc .sidebar-brand .logo-mark {
+  width: 26px;
+  height: 26px;
+}
+
+.app-shell--noc .sidebar-nav { display: none; }
+
 .app-sidebar {
   grid-row: 1 / -1;
   position: sticky;

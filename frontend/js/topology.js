@@ -67,7 +67,46 @@ const Topology = (() => {
           height: 36,
           'text-wrap': 'ellipsis',
           'text-max-width': 80,
+          opacity: 1,
+          'transition-property': 'opacity, border-width',
+          'transition-duration': 0.2,
         },
+      },
+      {
+        selector: 'node.dimmed',
+        style: { opacity: 0.15, 'text-opacity': 0.15 },
+      },
+      {
+        selector: 'node.focus-root, node.focus-neighbor',
+        style: {
+          opacity: 1,
+          'border-width': 3,
+          'border-color': '#00B8FF',
+          'z-index': 10,
+        },
+      },
+      {
+        selector: 'edge.dimmed',
+        style: { opacity: 0.08 },
+      },
+      {
+        selector: 'edge.focus-edge, edge.path-edge',
+        style: {
+          opacity: 1,
+          width: 3,
+          'line-color': '#00B8FF',
+          'target-arrow-color': '#00B8FF',
+          'line-style': 'solid',
+          'z-index': 9,
+        },
+      },
+      {
+        selector: 'node.filtered-out',
+        style: { display: 'none' },
+      },
+      {
+        selector: 'edge.filtered-out',
+        style: { display: 'none' },
       },
       {
         selector: 'node[type = "switch"]',
@@ -351,6 +390,27 @@ const Topology = (() => {
         else if (!options.compact) window.location.href = `/pages/device-detail.html?id=${id}`;
       });
 
+      cy.on('tap', 'edge', (evt) => {
+        if (options.onEdgeClick) {
+          options.onEdgeClick(evt.target.data('id'), evt.target.data());
+        }
+      });
+
+      cy.on('tap', (evt) => {
+        if (evt.target === cy && options.onBackgroundClick) options.onBackgroundClick();
+      });
+
+      cy.on('cxttap', 'node', (evt) => {
+        evt.originalEvent?.preventDefault?.();
+        const id = evt.target.data('id');
+        if (options.onNodeContext) options.onNodeContext(id, evt.target.data(), evt);
+      });
+
+      // Prevent browser menu on canvas when using context actions
+      el.addEventListener('contextmenu', (e) => {
+        if (options.onNodeContext) e.preventDefault();
+      });
+
       cy.ready(() => {
         cy.fit(undefined, options.padding ?? (options.compact ? 30 : 50));
         startTrafficAnimation();
@@ -367,6 +427,80 @@ const Topology = (() => {
   }
 
   function fit() { if (cy) cy.fit(undefined, 50); }
+
+  function fitTo(nodeId) {
+    if (!cy || !nodeId) return;
+    const n = cy.$id(String(nodeId));
+    if (n.empty()) return;
+    cy.animate({ fit: { eles: n.closedNeighborhood(), padding: 80 }, duration: 280 });
+    n.select();
+  }
+
+  function setFocus(nodeId) {
+    if (!cy || !nodeId) return;
+    clearFocus();
+    const root = cy.$id(String(nodeId));
+    if (root.empty()) return;
+    const neighborhood = root.closedNeighborhood();
+    cy.elements().addClass('dimmed');
+    neighborhood.removeClass('dimmed');
+    root.addClass('focus-root');
+    neighborhood.nodes().difference(root).addClass('focus-neighbor');
+    neighborhood.edges().addClass('focus-edge');
+  }
+
+  function clearFocus() {
+    if (!cy) return;
+    cy.elements().removeClass('dimmed focus-root focus-neighbor focus-edge path-edge');
+  }
+
+  function filterNodes(idSet) {
+    if (!cy) return;
+    if (idSet == null) {
+      cy.elements().removeClass('filtered-out');
+      return;
+    }
+    cy.nodes().forEach((n) => {
+      if (idSet.has(String(n.id()))) n.removeClass('filtered-out');
+      else n.addClass('filtered-out');
+    });
+    cy.edges().forEach((e) => {
+      const s = String(e.data('source'));
+      const t = String(e.data('target'));
+      if (idSet.has(s) && idSet.has(t)) e.removeClass('filtered-out');
+      else e.addClass('filtered-out');
+    });
+  }
+
+  function highlightPath(path) {
+    if (!cy) return;
+    clearFocus();
+    const ids = [];
+    if (Array.isArray(path)) {
+      path.forEach((h) => ids.push(String(h.id || h.device_id || h)));
+    } else if (path?.nodes) {
+      path.nodes.forEach((h) => ids.push(String(h.id || h.device_id || h)));
+    } else if (path?.hops) {
+      path.hops.forEach((h) => ids.push(String(h.id || h.device_id || h)));
+    }
+    if (!ids.length) return;
+    cy.elements().addClass('dimmed');
+    ids.forEach((id) => {
+      const n = cy.$id(id);
+      n.removeClass('dimmed').addClass('focus-neighbor');
+    });
+    for (let i = 0; i < ids.length - 1; i += 1) {
+      const edge = cy.edges().filter((e) => {
+        const s = String(e.data('source'));
+        const t = String(e.data('target'));
+        return (s === ids[i] && t === ids[i + 1]) || (s === ids[i + 1] && t === ids[i]);
+      });
+      edge.removeClass('dimmed').addClass('path-edge');
+    }
+    const eles = cy.collection(ids.map((id) => cy.$id(id)));
+    if (eles.nonempty()) cy.animate({ fit: { eles: eles.union(eles.connectedEdges()), padding: 60 }, duration: 280 });
+  }
+
   function relayout() {
     if (cy) {
       cy.layout({ name: 'cose', animate: true, padding: 50, nodeRepulsion: 9000 }).run();
@@ -389,5 +523,8 @@ const Topology = (() => {
   }
   function getCy() { return cy; }
 
-  return { init, fit, relayout, destroy, getCy, resolveNodeColor, ROLE_COLORS };
+  return {
+    init, fit, fitTo, relayout, destroy, getCy, resolveNodeColor, ROLE_COLORS,
+    setFocus, clearFocus, filterNodes, highlightPath,
+  };
 })();

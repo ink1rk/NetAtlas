@@ -2,26 +2,29 @@
  * NetAtlas shared application shell & utilities
  */
 const App = (() => {
-  const ASSET_V = 'eds1';
+  const ASSET_V = 'noc1';
   const THEME_KEY = 'netatlas_theme';
   const SIDEBAR_KEY = 'netatlas_sidebar_collapsed';
 
   function navSections() {
     return [
-      { section: I18n.t('nav.overview'), items: [
-        { id: 'dashboard', label: I18n.t('nav.dashboard'), href: '/pages/dashboard.html', icon: 'grid' },
-        { id: 'topology', label: I18n.t('nav.topology'), href: '/pages/topology.html', icon: 'share' },
-        { id: 'monitoring', label: I18n.t('nav.monitoring'), href: '/pages/monitoring.html', icon: 'activity' },
-        { id: 'observability', label: I18n.t('nav.observability'), href: '/pages/observability.html', icon: 'shield' },
-      ]},
-      { section: I18n.t('nav.inventory'), items: [
-        { id: 'devices', label: I18n.t('nav.devices'), href: '/pages/devices.html', icon: 'server' },
-        { id: 'search', label: I18n.t('nav.search'), href: '/pages/search.html', icon: 'search' },
-        { id: 'ipam', label: I18n.t('nav.ipam'), href: '/pages/ipam.html', icon: 'network' },
+      { section: I18n.t('nav.workspaces'), items: [
+        { id: 'dashboard', label: I18n.t('ws.network'), href: '/pages/dashboard.html?ws=network', icon: 'share' },
+        { id: 'cable', label: I18n.t('ws.cable'), href: '/pages/dashboard.html?ws=cable', icon: 'cable' },
+        { id: 'devices', label: I18n.t('ws.inventory'), href: '/pages/dashboard.html?ws=inventory', icon: 'server' },
+        { id: 'ipam', label: I18n.t('ws.ipam'), href: '/pages/dashboard.html?ws=ipam', icon: 'network' },
+        { id: 'monitoring', label: I18n.t('ws.monitoring'), href: '/pages/dashboard.html?ws=monitoring', icon: 'activity' },
+        { id: 'snapshots', label: I18n.t('ws.snapshots'), href: '/pages/dashboard.html?ws=snapshots', icon: 'layers' },
+        { id: 'backups', label: I18n.t('ws.backups'), href: '/pages/dashboard.html?ws=backups', icon: 'archive' },
       ]},
       { section: I18n.t('nav.operations'), items: [
         { id: 'discovery', label: I18n.t('nav.discovery'), href: '/pages/discovery.html', icon: 'radar' },
-        { id: 'snapshots', label: I18n.t('nav.snapshots'), href: '/pages/snapshots.html', icon: 'layers' },
+        { id: 'observability', label: I18n.t('nav.observability'), href: '/pages/observability.html', icon: 'shield' },
+        { id: 'search', label: I18n.t('nav.search'), href: '/pages/search.html', icon: 'search' },
+      ]},
+      { section: I18n.t('nav.legacy'), items: [
+        { id: 'devices-full', label: I18n.t('noc.open_full') + ' · ' + I18n.t('nav.devices'), href: '/pages/devices.html', icon: 'server' },
+        { id: 'topology', label: I18n.t('nav.topology'), href: '/pages/topology.html', icon: 'share' },
       ]},
     ];
   }
@@ -42,6 +45,8 @@ const App = (() => {
     command: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z"/></svg>',
     zap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
     menu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>',
+    cable: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9h6v6H4z"/><path d="M14 9h6v6h-6z"/><path d="M10 12h4"/><circle cx="7" cy="7" r="1"/><circle cx="17" cy="17" r="1"/></svg>',
+    archive: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><path d="M10 12h4"/></svg>',
   };
 
   const LOGO_SVG = '<img src="/static/brand/netatlas-mark.svg" alt="NetAtlas" class="logo-mark">';
@@ -113,6 +118,41 @@ const App = (() => {
     return u.slice(0, 2).toUpperCase();
   }
 
+  function topbarHtml(pageTitle, theme) {
+    return `
+      <header class="app-topbar">
+        <div class="topbar-left">
+          <button type="button" class="btn-na btn-menu topbar-icon-btn" id="menu-btn" aria-label="Menu">${ICONS.menu}</button>
+          <button type="button" class="topbar-icon-btn" id="sidebar-collapse-btn" title="${I18n.t('shell.toggle_sidebar')}" aria-label="${I18n.t('shell.toggle_sidebar')}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+          </button>
+          <h1 class="topbar-title">${escapeHtml(pageTitle)}</h1>
+        </div>
+        <div class="topbar-search">
+          <div class="na-search na-search--global ac-wrap">
+            <span class="na-search__icon">${ICONS.search}</span>
+            <input type="search" id="global-search" class="na-search__input ac-input" placeholder="${I18n.t('shell.global_search')}" autocomplete="off" />
+            <span class="na-search__kbd">⌘K</span>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button type="button" class="topbar-icon-btn" id="cmd-btn" title="${I18n.t('shell.command_palette')}" aria-label="${I18n.t('shell.command_palette')}">${ICONS.command}</button>
+          <button type="button" class="topbar-icon-btn" id="quick-btn" title="${I18n.t('shell.quick_actions')}" aria-label="${I18n.t('shell.quick_actions')}">${ICONS.zap}</button>
+          <div class="na-notif-anchor">
+            <button type="button" class="topbar-icon-btn" id="notif-btn" title="${I18n.t('shell.notifications')}" aria-label="${I18n.t('shell.notifications')}">
+              ${ICONS.bell}
+              <span class="na-notif-badge" id="notif-badge" hidden>0</span>
+            </button>
+            <div class="na-notif-dropdown" id="notif-dropdown"></div>
+          </div>
+          <button type="button" class="topbar-icon-btn" id="theme-btn" aria-label="${theme === 'light' ? I18n.t('shell.theme_dark') : I18n.t('shell.theme_light')}">${theme === 'light' ? ICONS.moon : ICONS.sun}</button>
+          ${I18n.langSwitcherHtml()}
+          <span class="topbar-clock mono" id="clock"></span>
+        </div>
+      </header>
+    `;
+  }
+
   function renderShell(activePage, pageTitle) {
     const user = Auth.getUser();
     const theme = getTheme();
@@ -152,52 +192,44 @@ const App = (() => {
             <button class="btn-na btn-na-secondary" id="logout-btn" style="width:100%">${I18n.t('shell.logout')}</button>
           </div>
         </aside>
-        <header class="app-topbar">
-          <div class="topbar-left">
-            <button type="button" class="btn-na btn-menu topbar-icon-btn" id="menu-btn" aria-label="Menu">${ICONS.menu}</button>
-            <button type="button" class="topbar-icon-btn" id="sidebar-collapse-btn" title="${I18n.t('shell.toggle_sidebar')}" aria-label="${I18n.t('shell.toggle_sidebar')}">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
-            </button>
-            <h1 class="topbar-title">${escapeHtml(pageTitle)}</h1>
-          </div>
-          <div class="topbar-search">
-            <div class="na-search na-search--global ac-wrap">
-              <span class="na-search__icon">${ICONS.search}</span>
-              <input type="search" id="global-search" class="na-search__input ac-input" placeholder="${I18n.t('shell.global_search')}" autocomplete="off" />
-              <span class="na-search__kbd">⌘K</span>
-            </div>
-          </div>
-          <div class="topbar-actions">
-            <button type="button" class="topbar-icon-btn" id="cmd-btn" title="${I18n.t('shell.command_palette')}" aria-label="${I18n.t('shell.command_palette')}">${ICONS.command}</button>
-            <button type="button" class="topbar-icon-btn" id="quick-btn" title="${I18n.t('shell.quick_actions')}" aria-label="${I18n.t('shell.quick_actions')}">${ICONS.zap}</button>
-            <div class="na-notif-anchor">
-              <button type="button" class="topbar-icon-btn" id="notif-btn" title="${I18n.t('shell.notifications')}" aria-label="${I18n.t('shell.notifications')}">
-                ${ICONS.bell}
-                <span class="na-notif-badge" id="notif-badge" hidden>0</span>
-              </button>
-              <div class="na-notif-dropdown" id="notif-dropdown"></div>
-            </div>
-            <button type="button" class="topbar-icon-btn" id="theme-btn" aria-label="${theme === 'light' ? I18n.t('shell.theme_dark') : I18n.t('shell.theme_light')}">${theme === 'light' ? ICONS.moon : ICONS.sun}</button>
-            ${I18n.langSwitcherHtml()}
-            <span class="topbar-clock mono" id="clock"></span>
-          </div>
-        </header>
+        ${topbarHtml(pageTitle, theme)}
         <main class="app-main" id="page-content"></main>
       </div>
       <div class="na-toaster" id="na-toasts" aria-live="polite" aria-atomic="true"></div>
     `;
   }
 
-  function initShell(activePage, pageTitleOrKey, renderContent) {
-    if (!Auth.requireAuth()) return;
-    applyTheme(getTheme());
-    const pageTitle = pageTitleOrKey.startsWith('title.') || pageTitleOrKey.startsWith('nav.')
-      ? I18n.t(pageTitleOrKey)
-      : pageTitleOrKey;
-    document.title = `${pageTitle} — NetAtlas`;
-    document.body.innerHTML = renderShell(activePage, pageTitle);
-    applyTheme(getTheme());
+  function renderNocShell(activeWs, pageTitle) {
+    const user = Auth.getUser();
+    const theme = getTheme();
+    const rail = typeof Noc !== 'undefined'
+      ? Noc.railHtml(activeWs)
+      : '';
 
+    return `
+      <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+      <div class="app-shell app-shell--noc">
+        <aside class="app-sidebar" id="app-sidebar">
+          <div class="sidebar-brand" style="justify-content:center;padding:0;height:var(--na-topbar-h)">
+            <a href="/pages/dashboard.html" title="NetAtlas">${LOGO_SVG}</a>
+          </div>
+          ${rail}
+          <div class="sidebar-footer" style="padding:0.5rem;border-top:1px solid var(--na-border)">
+            <button class="topbar-icon-btn" id="logout-btn" title="${I18n.t('shell.logout')}" aria-label="${I18n.t('shell.logout')}" style="width:100%">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            </button>
+            <div class="sidebar-user__avatar" style="margin:0.5rem auto 0" title="${escapeHtml(user?.username || '')}">${escapeHtml(userInitials(user?.username))}</div>
+          </div>
+        </aside>
+        ${topbarHtml(pageTitle, theme)}
+        <main class="app-main" id="page-content"></main>
+        <footer class="noc-status-bar" id="noc-status-bar"></footer>
+      </div>
+      <div class="na-toaster" id="na-toasts" aria-live="polite" aria-atomic="true"></div>
+    `;
+  }
+
+  function bindShellChrome({ noc = false } = {}) {
     document.getElementById('logout-btn')?.addEventListener('click', () => Auth.logout());
     document.getElementById('menu-btn')?.addEventListener('click', () => {
       document.getElementById('app-sidebar')?.classList.toggle('open');
@@ -208,6 +240,10 @@ const App = (() => {
       document.getElementById('sidebar-backdrop')?.classList.remove('is-open');
     });
     document.getElementById('sidebar-collapse-btn')?.addEventListener('click', () => {
+      if (noc) {
+        document.getElementById('noc-workspace')?.classList.toggle('is-left-collapsed');
+        return;
+      }
       setSidebarCollapsed(!isSidebarCollapsed());
     });
     document.getElementById('theme-btn')?.addEventListener('click', toggleTheme);
@@ -224,9 +260,61 @@ const App = (() => {
     if (typeof Ui !== 'undefined' && Ui.initNotifications) Ui.initNotifications();
     updateClock();
     setInterval(updateClock, 30000);
+  }
+
+  function initShell(activePage, pageTitleOrKey, renderContent) {
+    if (!Auth.requireAuth()) return;
+    applyTheme(getTheme());
+    const pageTitle = pageTitleOrKey.startsWith('title.') || pageTitleOrKey.startsWith('nav.') || pageTitleOrKey.startsWith('ws.')
+      ? I18n.t(pageTitleOrKey)
+      : pageTitleOrKey;
+    document.title = `${pageTitle} — NetAtlas`;
+    document.body.innerHTML = renderShell(activePage, pageTitle);
+    applyTheme(getTheme());
+    bindShellChrome({ noc: false });
 
     const content = document.getElementById('page-content');
     if (renderContent) renderContent(content);
+  }
+
+  function initNocShell(workspaceId, pageTitleOrKey) {
+    if (!Auth.requireAuth()) return;
+    applyTheme(getTheme());
+    const ws = workspaceId || App.queryParam('ws') || 'network';
+    const pageTitle = pageTitleOrKey
+      ? (pageTitleOrKey.startsWith('title.') || pageTitleOrKey.startsWith('ws.') ? I18n.t(pageTitleOrKey) : pageTitleOrKey)
+      : I18n.t('ws.network');
+    document.title = `${pageTitle} — NetAtlas NOC`;
+    document.body.innerHTML = renderNocShell(ws, pageTitle);
+    applyTheme(getTheme());
+    bindShellChrome({ noc: true });
+
+    const content = document.getElementById('page-content');
+    if (typeof Noc !== 'undefined') {
+      Noc.mount(content, { workspace: ws }).catch((err) => {
+        showError(content, err.message);
+      });
+    }
+  }
+
+  function locateFromSearch(it) {
+    Ui.pushRecent('search', it.label || it.value);
+    // Prefer map selection when in NOC
+    if (typeof Noc !== 'undefined' && document.getElementById('noc-workspace')) {
+      const href = it.href || '';
+      const m = href.match(/id=([^&]+)/);
+      const id = m ? decodeURIComponent(m[1]) : null;
+      if (id) {
+        Noc.selectObject({ type: 'device', id, data: { id, hostname: it.label } });
+        Topology.fitTo?.(id);
+        return;
+      }
+    }
+    if (it.href) {
+      window.location.href = it.href;
+      return;
+    }
+    window.location.href = `/pages/search.html?q=${encodeURIComponent(it.value || it.label)}`;
   }
 
   function bindGlobalSearch() {
@@ -247,26 +335,25 @@ const App = (() => {
           href: s.href,
         }));
       },
-      onSelect: (it) => {
-        if (it.href) {
-          Ui.pushRecent('search', it.label || it.value);
-          window.location.href = it.href;
-          return;
-        }
-        const q = it.value || it.label;
-        Ui.pushRecent('search', q);
-        window.location.href = `/pages/search.html?q=${encodeURIComponent(q)}`;
-      },
+      onSelect: locateFromSearch,
     });
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         const q = input.value.trim();
         if (!q) return;
         Ui.pushRecent('search', q);
+        if (document.getElementById('noc-workspace')) {
+          // filter left list
+          const filter = document.getElementById('noc-filter-q');
+          if (filter) {
+            filter.value = q;
+            filter.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          return;
+        }
         window.location.href = `/pages/search.html?q=${encodeURIComponent(q)}`;
       }
     });
-    // Clicking kbd hint opens command palette
     input.closest('.na-search')?.querySelector('.na-search__kbd')?.addEventListener('click', () => openCommandPalette());
   }
 
@@ -298,9 +385,17 @@ const App = (() => {
         group: I18n.t('cmd.actions'),
         id: 'act-topology',
         label: I18n.t('cmd.open_topology'),
-        meta: 'Map',
+        meta: 'NOC',
         icon: 'share',
-        run: () => { window.location.href = '/pages/topology.html'; },
+        run: () => { window.location.href = '/pages/dashboard.html?ws=network'; },
+      },
+      {
+        group: I18n.t('cmd.actions'),
+        id: 'act-focus',
+        label: I18n.t('noc.focus_mode'),
+        meta: 'F',
+        icon: 'zap',
+        run: () => { closeCommandPalette(); if (typeof Noc !== 'undefined') Noc.toggleFocusMode(); },
       },
       {
         group: I18n.t('cmd.actions'),
@@ -335,7 +430,23 @@ const App = (() => {
         label: I18n.t('cmd.browse_devices'),
         meta: 'Inventory',
         icon: 'server',
-        run: () => { window.location.href = '/pages/devices.html'; },
+        run: () => { window.location.href = '/pages/dashboard.html?ws=inventory'; },
+      },
+      {
+        group: I18n.t('noc.future_ready'),
+        id: 'fut-ai',
+        label: I18n.t('noc.future.ai'),
+        meta: 'Soon',
+        icon: 'zap',
+        run: () => { closeCommandPalette(); Noc?.showFuture?.('ai'); },
+      },
+      {
+        group: I18n.t('noc.future_ready'),
+        id: 'fut-visio',
+        label: I18n.t('noc.future.visio'),
+        meta: 'Soon',
+        icon: 'share',
+        run: () => { closeCommandPalette(); Noc?.showFuture?.('visio'); },
       },
     ];
 
@@ -520,7 +631,7 @@ const App = (() => {
 
   return {
     ASSET_V, ICONS, LOGO_SVG, navSections,
-    escapeHtml, formatDate, statusBadge, renderShell, initShell,
+    escapeHtml, formatDate, statusBadge, renderShell, renderNocShell, initShell, initNocShell,
     showError, queryParam, formatBps, updateClock,
     getTheme, applyTheme, toggleTheme, openCommandPalette, closeCommandPalette,
   };

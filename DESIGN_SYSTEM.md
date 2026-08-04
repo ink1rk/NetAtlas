@@ -5,7 +5,8 @@ Design system for the NetAtlas operator console. Inspired by Cisco DNA Center, V
 **Default theme:** Dark  
 **Light theme:** `[data-theme="light"]` on `<html>`  
 **Assets:** local only (no CDN)  
-**Entry CSS:** `frontend/css/app.css` → imports `tokens.css`, `components.css`, `layout.css`
+**Entry CSS:** `frontend/css/app.css` → imports `tokens.css`, `components.css`, `layout.css`, `noc.css`  
+**Primary UX:** Digital Twin NOC — Live Network Map is the main workspace (`App.initNocShell`)
 
 ---
 
@@ -276,16 +277,48 @@ App.toggleTheme();
 
 ---
 
-## 9. File map
+## 9. NOC Digital Twin workspace
+
+NetAtlas operator UX is map-centric (`frontend/js/noc.js`, `frontend/css/noc.css`).
+
+| Zone | Role |
+|------|------|
+| Workspace rail (left) | Network, Cable Map, Inventory, IPAM, Monitoring, Snapshots, Backups |
+| Left panel | Filters / workspace tools |
+| Center (70–80%) | Live Network Map + mini-map |
+| Inspector (right) | Selection details without page navigation |
+| Bottom timeline | Discovery, Snapshot, Changes, Alerts, Backups |
+| Status bar | Discovery progress, online devices, last scan, tasks, realtime status |
+
+### Key APIs
+
+```js
+App.initNocShell('network', 'ws.network');
+Noc.selectObject({ type: 'device', id, data });
+Noc.toggleFocusMode();
+Noc.showContextMenu(x, y, target);
+Noc.showFuture('rack' | 'visio' | 'ai' | 'backup' | 'diff');
+Topology.setFocus(id); Topology.clearFocus();
+Topology.highlightPath(path); Topology.fitTo(id);
+```
+
+Context menu: Open, Locate, Trace Path, Show Interfaces, View History, Export.  
+Future stubs (architecture only, no backend): Rack View, Visio Export, AI Assistant, Configuration Backup, Diff Viewer.
+
+---
+
+## 10. File map
 
 | Path | Role |
 |------|------|
 | `frontend/css/tokens.css` | Design tokens + themes + keyframes |
 | `frontend/css/components.css` | Component library |
-| `frontend/css/layout.css` | Shell, sidebar, topbar, dashboard |
+| `frontend/css/layout.css` | Shell, sidebar, topbar |
+| `frontend/css/noc.css` | NOC workspace layout |
 | `frontend/css/app.css` | Entry + page utilities |
-| `frontend/js/app.js` | Shell, theme, command palette |
+| `frontend/js/app.js` | Shell, theme, command palette, `initNocShell` |
+| `frontend/js/noc.js` | NOC controller (inspector, timeline, status) |
 | `frontend/js/ui.js` | Toasts, autocomplete, notifications |
-| `frontend/js/topology.js` | Cytoscape map + mini map |
+| `frontend/js/topology.js` | Cytoscape map, mini-map, focus, path |
 | `frontend/static/fonts/*` | IBM Plex Sans, JetBrains Mono |
 | `frontend/static/vendor/*` | Bootstrap, Cytoscape, Chart.js |

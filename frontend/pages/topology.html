@@ -4,46 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NetAtlas</title>
-  <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=eds1">
-  <script>
-    try {
-      var t = localStorage.getItem('netatlas_theme');
-      document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
-    } catch (e) {
-      document.documentElement.setAttribute('data-theme', 'dark');
-    }
-  </script>
+  <script>window.location.replace('/pages/dashboard.html?ws=network');</script>
 </head>
 <body>
-  <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-  <script src="/static/vendor/cytoscape/cytoscape.min.js"></script>
-  <script src="/js/i18n.js?v=eds1"></script>
-  <script src="/js/api.js?v=eds1"></script>
-  <script src="/js/auth.js?v=eds1"></script>
-  <script src="/js/topology.js?v=eds1"></script>
-  <script src="/js/ui.js?v=eds1"></script>
-  <script src="/js/app.js?v=eds1"></script>
-  <script>
-    App.initShell('topology', 'title.topology', (el) => {
-      el.classList.add('app-main--topology');
-      el.innerHTML = `
-        <div class="topology-toolbar">
-          <button class="na-btn na-btn--secondary na-btn--sm" id="btn-fit">${I18n.t('topo.fit')}</button>
-          <button class="na-btn na-btn--secondary na-btn--sm" id="btn-relayout">${I18n.t('topo.relayout')}</button>
-          <button class="na-btn na-btn--secondary na-btn--sm" id="btn-refresh">${I18n.t('common.refresh')}</button>
-          <button class="na-btn na-btn--ghost na-btn--sm" id="btn-cmd">${I18n.t('shell.command_palette')} ⌘K</button>
-        </div>
-        <div class="topology-stage" style="flex:1;min-height:0;position:relative">
-          <div id="topology-cy" class="topology-container topology-container--full"></div>
-        </div>
-      `;
-      Topology.init('topology-cy', { minimap: true });
-      document.getElementById('btn-fit').addEventListener('click', () => Topology.fit());
-      document.getElementById('btn-relayout').addEventListener('click', () => Topology.relayout());
-      document.getElementById('btn-refresh').addEventListener('click', () => Topology.init('topology-cy', { minimap: true }));
-      document.getElementById('btn-cmd').addEventListener('click', () => App.openCommandPalette());
-    });
-  </script>
+  <p><a href="/pages/dashboard.html?ws=network">NetAtlas NOC</a></p>
 </body>
 </html>
