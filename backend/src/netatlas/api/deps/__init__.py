@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from netatlas.config import Settings, get_settings
+from netatlas.domain.errors import AuthenticationError
 from netatlas.infrastructure.persistence.models import RoleModel, UserModel, UserRoleModel
 from netatlas.infrastructure.persistence.session import get_session
 from netatlas.infrastructure.security.auth import decode_token
@@ -43,11 +44,17 @@ async def get_current_user(
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
     token = authorization.split(" ", 1)[1]
-    payload = decode_token(
-        token,
-        public_key_pem=settings.jwt_public_key_pem.get_secret_value(),
-        algorithm=settings.jwt_algorithm,
-    )
+    try:
+        payload = decode_token(
+            token,
+            public_key_pem=settings.jwt_public_key_pem.get_secret_value(),
+            algorithm=settings.jwt_algorithm,
+        )
+    except AuthenticationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc) or "Invalid or expired token",
+        ) from exc
     if payload.get("type") != "access":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
     user_id = UUID(payload["sub"])

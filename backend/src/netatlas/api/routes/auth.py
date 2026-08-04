@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from netatlas.api.deps import CurrentUser, get_current_user, get_db, load_user_roles
 from netatlas.config import Settings, get_settings
+from netatlas.domain.errors import AuthenticationError
 from netatlas.infrastructure.persistence.models import RefreshTokenModel, UserModel
 from netatlas.infrastructure.persistence.repositories import SqlAlchemyAuditLogger
 from netatlas.infrastructure.security.auth import (
@@ -99,11 +100,14 @@ async def refresh(
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> TokenPair:
-    payload = decode_token(
-        body.refresh_token,
-        public_key_pem=settings.jwt_public_key_pem.get_secret_value(),
-        algorithm=settings.jwt_algorithm,
-    )
+    try:
+        payload = decode_token(
+            body.refresh_token,
+            public_key_pem=settings.jwt_public_key_pem.get_secret_value(),
+            algorithm=settings.jwt_algorithm,
+        )
+    except AuthenticationError as exc:
+        raise HTTPException(status_code=401, detail=str(exc) or "Invalid refresh token") from exc
     if payload.get("type") != "refresh":
         raise HTTPException(status_code=401, detail="Invalid refresh token")
     jti = payload["jti"]
@@ -156,11 +160,14 @@ async def logout(
     settings: Annotated[Settings, Depends(get_settings)],
     user: Annotated[CurrentUser, Depends(get_current_user)],
 ) -> dict[str, str]:
-    payload = decode_token(
-        body.refresh_token,
-        public_key_pem=settings.jwt_public_key_pem.get_secret_value(),
-        algorithm=settings.jwt_algorithm,
-    )
+    try:
+        payload = decode_token(
+            body.refresh_token,
+            public_key_pem=settings.jwt_public_key_pem.get_secret_value(),
+            algorithm=settings.jwt_algorithm,
+        )
+    except AuthenticationError:
+        return {"status": "ok"}
     jti = payload.get("jti")
     stored = (
         await session.execute(select(RefreshTokenModel).where(RefreshTokenModel.jti == jti))

@@ -67,10 +67,28 @@ def create_app() -> FastAPI:
         from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
         from fastapi.exceptions import RequestValidationError
 
+        from netatlas.domain.errors import AuthenticationError, AuthorizationError
+
         if isinstance(exc, HTTPException):
             return await http_exception_handler(request, exc)
         if isinstance(exc, RequestValidationError):
             return await request_validation_exception_handler(request, exc)
+        if isinstance(exc, AuthenticationError):
+            return ORJSONResponse(
+                status_code=401,
+                content={
+                    "error": {"code": exc.code, "message": exc.message},
+                    "detail": exc.message,
+                },
+            )
+        if isinstance(exc, AuthorizationError):
+            return ORJSONResponse(
+                status_code=403,
+                content={
+                    "error": {"code": exc.code, "message": exc.message},
+                    "detail": exc.message,
+                },
+            )
         logger.exception("Unhandled error method=%s path=%s", request.method, request.url.path)
         return ORJSONResponse(
             status_code=500,
