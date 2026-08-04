@@ -10,6 +10,7 @@ from typing import Any
 from uuid import UUID
 
 
+
 @dataclass(frozen=True, slots=True)
 class GraphNode:
     id: str

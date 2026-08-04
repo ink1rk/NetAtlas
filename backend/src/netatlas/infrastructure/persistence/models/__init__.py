@@ -101,6 +101,7 @@ class DeviceModel(Base, TimestampMixin):
         Index("ix_devices_management_ip", "management_ip"),
         Index("ix_devices_hostname", "hostname"),
         Index("ix_devices_serial", "serial"),
+        Index("ix_devices_network_role", "network_role"),
     )
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -118,6 +119,16 @@ class DeviceModel(Base, TimestampMixin):
     first_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     attributes: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    # Device Intelligence — network role + metadata (additive, nullable-safe)
+    network_role: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown")
+    role_confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    role_reasons: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+    role_source: Mapped[str] = mapped_column(String(16), nullable=False, default="auto")
+    location: Mapped[str | None] = mapped_column(String(255))
+    rack: Mapped[str | None] = mapped_column(String(128))
+    owner: Mapped[str | None] = mapped_column(String(128))
+    criticality: Mapped[str] = mapped_column(String(32), nullable=False, default="normal")
+    description: Mapped[str | None] = mapped_column(Text)
 
     interfaces: Mapped[list[InterfaceModel]] = relationship(
         back_populates="device", cascade="all, delete-orphan"
@@ -532,3 +543,80 @@ class SiemCorrelationHitModel(Base):
     event_ids: Mapped[list[str] | None] = mapped_column(ARRAY(String), default=list)
     details: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ── Device Intelligence / Digital Twin extensions ─────────
+
+
+class VlanObjectModel(Base, TimestampMixin):
+    """Global VLAN object (network-wide), distinct from per-device `vlans`."""
+
+    __tablename__ = "vlan_objects"
+    __table_args__ = (UniqueConstraint("vlan_id"), Index("ix_vlan_objects_vlan_id", "vlan_id"))
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    vlan_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str | None] = mapped_column(String(128))
+    description: Mapped[str | None] = mapped_column(Text)
+    networks: Mapped[list[str] | None] = mapped_column(ARRAY(String), default=list)
+    attributes: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+
+
+class DeviceRelationshipModel(Base, TimestampMixin):
+    __tablename__ = "device_relationships"
+    __table_args__ = (
+        UniqueConstraint("source_device_id", "target_device_id", "rel_type"),
+        Index("ix_device_rel_source", "source_device_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    source_device_id: Mapped[UUID] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"))
+    target_device_id: Mapped[UUID] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"))
+    rel_type: Mapped[str] = mapped_column(String(64), nullable=False, default="connected")
+    attributes: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+
+
+class TopologyHistoryModel(Base):
+    __tablename__ = "topology_history"
+    __table_args__ = (Index("ix_topology_history_created", "created_at"),)
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    snapshot_id: Mapped[UUID | None] = mapped_column(ForeignKey("snapshots.id"))
+    discovery_job_id: Mapped[UUID | None] = mapped_column(ForeignKey("discovery_jobs.id"))
+    label: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    summary: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    graph: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PatchPanelModel(Base, TimestampMixin):
+    """Cable Map foundation — physical patch panels (may be empty initially)."""
+
+    __tablename__ = "patch_panels"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    location: Mapped[str | None] = mapped_column(String(255))
+    rack: Mapped[str | None] = mapped_column(String(128))
+    port_count: Mapped[int] = mapped_column(Integer, nullable=False, default=24)
+    attributes: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+
+
+class CableModel(Base, TimestampMixin):
+    """Logical/physical cable between endpoints (device iface or patch panel port)."""
+
+    __tablename__ = "cables"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    label: Mapped[str | None] = mapped_column(String(128))
+    cable_type: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown")
+    a_device_id: Mapped[UUID | None] = mapped_column(ForeignKey("devices.id", ondelete="SET NULL"))
+    a_interface_id: Mapped[UUID | None] = mapped_column(ForeignKey("interfaces.id", ondelete="SET NULL"))
+    a_panel_id: Mapped[UUID | None] = mapped_column(ForeignKey("patch_panels.id", ondelete="SET NULL"))
+    a_port: Mapped[str | None] = mapped_column(String(64))
+    b_device_id: Mapped[UUID | None] = mapped_column(ForeignKey("devices.id", ondelete="SET NULL"))
+    b_interface_id: Mapped[UUID | None] = mapped_column(ForeignKey("interfaces.id", ondelete="SET NULL"))
+    b_panel_id: Mapped[UUID | None] = mapped_column(ForeignKey("patch_panels.id", ondelete="SET NULL"))
+    b_port: Mapped[str | None] = mapped_column(String(64))
+    link_id: Mapped[UUID | None] = mapped_column(ForeignKey("links.id", ondelete="SET NULL"))
+    attributes: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)

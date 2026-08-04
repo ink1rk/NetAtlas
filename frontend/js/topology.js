@@ -20,18 +20,21 @@ const Topology = (() => {
   };
 
   function resolveNodeColor(n) {
-    const role = String(n.role || '').toLowerCase();
+    const role = String(n.role || n.network_role || '').toLowerCase();
+    if (ROLE_COLORS[role]) return ROLE_COLORS[role];
     const type = String(n.type || '').toLowerCase();
     const platform = String(n.platform || n.vendor || '').toLowerCase();
     const combined = `${role} ${type} ${platform}`;
 
     if (/firewall|ideco/.test(combined)) return ROLE_COLORS.firewall;
     if (/distribution/.test(combined)) return ROLE_COLORS.distribution;
+    if (/wireless|wifi|uap/.test(combined)) return ROLE_COLORS.access;
     if (/vm|proxmox|vsphere|esxi|hypervisor/.test(combined)) return ROLE_COLORS.vm;
     if (/storage|nas|san|disk/.test(combined)) return ROLE_COLORS.storage;
     if (/server|linux|host/.test(combined)) return ROLE_COLORS.server;
-    if (/core|eltex|router|spine/.test(combined)) return ROLE_COLORS.core;
-    if (/access|switch|unifi|mikrotik|edge/.test(combined)) return ROLE_COLORS.access;
+    if (/core|spine/.test(combined)) return ROLE_COLORS.core;
+    if (/router/.test(combined)) return ROLE_COLORS.core;
+    if (/access|switch|unifi|mikrotik|edge|eltex/.test(combined)) return ROLE_COLORS.access;
     return ROLE_COLORS.unknown;
   }
 
@@ -84,6 +87,27 @@ const Topology = (() => {
           'border-color': '#00B8FF',
           'z-index': 10,
         },
+      },
+      {
+        selector: 'node.role-group',
+        style: {
+          'background-color': '#0B1220',
+          'background-opacity': 0.2,
+          'border-width': 1,
+          'border-color': '#334155',
+          'border-style': 'dashed',
+          label: 'data(label)',
+          'font-size': 11,
+          color: '#94A3B8',
+          'text-valign': 'top',
+          'text-margin-y': -8,
+          padding: 18,
+          shape: 'roundrectangle',
+        },
+      },
+      {
+        selector: 'node.filtered-out',
+        style: { display: 'none' },
       },
       {
         selector: 'edge.dimmed',
@@ -192,15 +216,23 @@ const Topology = (() => {
   }
 
   function mapGraph(data) {
-    const nodes = (data.nodes || []).map((n) => ({
-      data: {
-        id: n.id || n.device_id,
-        label: n.label || n.hostname || n.id,
-        type: n.type || n.platform || 'switch',
-        color: resolveNodeColor(n),
-        ...n,
-      },
-    }));
+    const nodes = (data.nodes || []).map((n) => {
+      const payload = n.data || n;
+      const role = n.role || payload.network_role || payload.role || '';
+      return {
+        data: {
+          id: n.id || payload.id || payload.device_id,
+          label: n.label || payload.hostname || payload.label || n.id,
+          type: n.type || payload.platform || payload.type || 'switch',
+          role,
+          network_role: role,
+          color: resolveNodeColor({ ...payload, role }),
+          layout: payload.layout || n.layout,
+          ...payload,
+          ...n,
+        },
+      };
+    });
     const edges = (data.edges || []).map((e, i) => ({
       data: {
         id: e.id || `e${i}`,
@@ -351,6 +383,67 @@ const Topology = (() => {
     cy.one('layoutstop', copyPositions);
   }
 
+  function hierarchicalLayoutConfig(elements, options = {}) {
+    // Prefer role-hierarchy positions from API layout metadata when present
+    const nodes = elements.filter((e) => e.data && e.data.id && !e.data.source);
+    const hasLayout = nodes.some((n) => n.data?.layout || n.data?.data?.layout);
+    if (hasLayout && !options.forceCose) {
+      const byRank = {};
+      nodes.forEach((n) => {
+        const meta = n.data.layout || n.data.data?.layout || {};
+        const rank = meta.rank ?? 5;
+        byRank[rank] = byRank[rank] || [];
+        byRank[rank].push(n);
+      });
+      // Mutate element positions for preset layout
+      Object.keys(byRank).forEach((rankKey) => {
+        const rank = Number(rankKey);
+        const list = byRank[rankKey];
+        const width = Math.max(list.length, 1);
+        list.forEach((n, col) => {
+          const meta = n.data.layout || n.data.data?.layout || {};
+          const c = meta.column != null ? meta.column : col;
+          n.position = {
+            x: (c - (width - 1) / 2) * 160,
+            y: rank * 140,
+          };
+        });
+      });
+      return {
+        name: 'preset',
+        animate: !options.compact,
+        padding: options.padding ?? 40,
+        fit: true,
+      };
+    }
+    return {
+      name: 'cose',
+      animate: !options.compact,
+      animationDuration: options.compact ? 0 : 400,
+      padding: options.padding ?? (options.compact ? 30 : 50),
+      nodeRepulsion: options.compact ? 7000 : 9000,
+      idealEdgeLength: options.compact ? 80 : 100,
+      gravity: 0.25,
+    };
+  }
+
+  function applyHierarchy(layoutNodes) {
+    if (!cy || !layoutNodes) return;
+    Object.entries(layoutNodes).forEach(([id, meta]) => {
+      const n = cy.$id(String(id));
+      if (n.empty()) return;
+      const width = meta.columns_in_layer || 1;
+      const col = meta.column || 0;
+      const rank = meta.rank ?? 5;
+      n.position({
+        x: (col - (width - 1) / 2) * 160,
+        y: rank * 140,
+      });
+      n.data('role', meta.layer || n.data('role'));
+    });
+    cy.fit(undefined, 40);
+  }
+
   async function init(containerId, options = {}) {
     const el = document.getElementById(containerId);
     if (!el) return null;
@@ -365,20 +458,21 @@ const Topology = (() => {
       const graph = options.graph || await Api.topologyGraph();
       el.innerHTML = '';
       const elements = mapGraph(graph);
+      // Attach layout metadata onto node data for preset layout
+      if (graph.layout?.nodes) {
+        elements.forEach((el) => {
+          if (el.data && !el.data.source && graph.layout.nodes[el.data.id]) {
+            el.data.layout = graph.layout.nodes[el.data.id];
+            el.data.role = el.data.role || el.data.network_role || graph.layout.nodes[el.data.id].layer;
+          }
+        });
+      }
 
       cy = cytoscape({
         container: el,
         elements,
         style: buildStyle(),
-        layout: {
-          name: 'cose',
-          animate: !options.compact,
-          animationDuration: options.compact ? 0 : 400,
-          padding: options.padding ?? (options.compact ? 30 : 50),
-          nodeRepulsion: options.compact ? 7000 : 9000,
-          idealEdgeLength: options.compact ? 80 : 100,
-          gravity: 0.25,
-        },
+        layout: hierarchicalLayoutConfig(elements, options),
         minZoom: 0.15,
         maxZoom: 4,
         wheelSensitivity: 0.3,
@@ -516,6 +610,94 @@ const Topology = (() => {
       });
     }
   }
+
+  function applyHierarchicalLayout() {
+    if (!cy) return;
+    const byRank = {};
+    cy.nodes().forEach((n) => {
+      if (n.data('isCompound')) return;
+      const role = String(n.data('role') || n.data('network_role') || 'unknown').toLowerCase();
+      const rankMap = {
+        firewall: 0, router: 1, core: 2, distribution: 3,
+        access: 4, wireless: 5, server: 6, storage: 6, unknown: 5,
+      };
+      const rank = rankMap[role] ?? 5;
+      byRank[rank] = byRank[rank] || [];
+      byRank[rank].push(n);
+    });
+    Object.keys(byRank).forEach((rankKey) => {
+      const rank = Number(rankKey);
+      const list = byRank[rankKey];
+      const width = Math.max(list.length, 1);
+      list.forEach((n, col) => {
+        n.position({ x: (col - (width - 1) / 2) * 160, y: rank * 140 });
+      });
+    });
+    cy.fit(undefined, 40);
+  }
+
+  function groupByRole() {
+    if (!cy) return;
+    // Remove previous compound groups
+    cy.nodes('.role-group').forEach((n) => {
+      n.children().move({ parent: null });
+      n.remove();
+    });
+    const roles = {};
+    cy.nodes().forEach((n) => {
+      if (n.isParent()) return;
+      const role = String(n.data('role') || n.data('network_role') || 'unknown').toLowerCase() || 'unknown';
+      roles[role] = roles[role] || [];
+      roles[role].push(n);
+    });
+    Object.entries(roles).forEach(([role, nodes]) => {
+      if (nodes.length < 2) return;
+      const parentId = `group-${role}`;
+      cy.add({
+        group: 'nodes',
+        data: { id: parentId, label: role.toUpperCase(), isCompound: true, role },
+        classes: 'role-group',
+      });
+      nodes.forEach((n) => n.move({ parent: parentId }));
+    });
+    applyHierarchicalLayout();
+  }
+
+  function collapseRole(role) {
+    if (!cy || !role) return;
+    const parent = cy.$id(`group-${String(role).toLowerCase()}`);
+    if (parent.nonempty()) {
+      parent.children().style('display', 'none');
+      parent.style({ 'background-opacity': 0.35, label: `${String(role).toUpperCase()} (${parent.children().length})` });
+    } else {
+      // Without compound parent: dim nodes of that role
+      cy.nodes().forEach((n) => {
+        const r = String(n.data('role') || n.data('network_role') || '').toLowerCase();
+        if (r === String(role).toLowerCase()) n.addClass('filtered-out');
+      });
+    }
+  }
+
+  function expandRole(role) {
+    if (!cy) return;
+    if (role) {
+      const parent = cy.$id(`group-${String(role).toLowerCase()}`);
+      if (parent.nonempty()) {
+        parent.children().style('display', 'element');
+        parent.style({ 'background-opacity': 0.15, label: String(role).toUpperCase() });
+      }
+      cy.nodes().forEach((n) => {
+        const r = String(n.data('role') || n.data('network_role') || '').toLowerCase();
+        if (r === String(role).toLowerCase()) n.removeClass('filtered-out');
+      });
+      return;
+    }
+    cy.nodes('.role-group').forEach((p) => {
+      p.children().style('display', 'element');
+    });
+    cy.elements().removeClass('filtered-out');
+  }
+
   function destroy() {
     stopTrafficAnimation();
     destroyMiniMap();
@@ -525,6 +707,7 @@ const Topology = (() => {
 
   return {
     init, fit, fitTo, relayout, destroy, getCy, resolveNodeColor, ROLE_COLORS,
-    setFocus, clearFocus, filterNodes, highlightPath,
+    setFocus, clearFocus, filterNodes, highlightPath, applyHierarchy,
+    applyHierarchicalLayout, groupByRole, collapseRole, expandRole,
   };
 })();

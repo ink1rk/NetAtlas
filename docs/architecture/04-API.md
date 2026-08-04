@@ -56,6 +56,25 @@ All mutating endpoints that could affect **network devices** are absent. Mutatio
 | GET | `/snapshots/{id}` | Detail/summary |
 | POST | `/snapshots/diff` | Body: `{left_id, right_id}` |
 
+## Device Intelligence / Digital Twin
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/devices/{id}/intelligence` | Identity, role, metadata, relationships |
+| POST | `/devices/{id}/role/detect` | Auto-detect network role |
+| PATCH | `/devices/{id}/role` | Manual role override |
+| POST | `/devices/roles/detect-all` | Batch role detection |
+| PATCH | `/devices/{id}/metadata` | location/rack/owner/criticality |
+| GET | `/trace/mac?q=` | Find device by MAC/IP/hostname |
+| GET | `/vlans` | VLAN intelligence list |
+| GET | `/vlans/{vlan_id}` | VLAN detail |
+| GET | `/audit/timeline` | Ops timeline (audit + snapshots) |
+| GET | `/audit/objects/{type}/{id}` | Object history |
+| GET | `/cable-map` | Cable map model (panels optional) |
+| GET | `/topology/layout` | Hierarchical layout metadata |
+
+Discovery jobs accept optional `scan_mode`: `fast` | `deep` | `topology`.
+
 ## IPAM
 
 | Method | Path | Description |

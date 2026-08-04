@@ -22,16 +22,30 @@ See [`docs/architecture/09-TARGET_STACK.md`](docs/architecture/09-TARGET_STACK.m
 
 ## Features
 
+- **Digital Twin NOC workspace** — map-first canvas + inspector drawer (no page jumps for selection)
+- **Device Intelligence** — identity, auto role detection (Core/Access/Firewall/…), metadata, relationships
+- **MAC Trace / Find Device** — locate endpoints by MAC, IP, or hostname with path highlighting
+- **VLAN Intelligence** — VLAN list/detail with member devices and topology path
 - Automatic discovery via ICMP, SNMPv2/v3, SSH (allow-listed show/read commands), vendor APIs (UniFi/Proxmox/vSphere), LLDP, FDB, ARP
+- Discovery Wizard with Fast / Deep / Topology scan modes
+- Hierarchical Cytoscape topology (Firewall → Core → Distribution → Access) with grouping and path highlight
+- Cable Map mode (patch-panel model ready; paths inferred from LLDP/FDB)
+- Immutable snapshots after every discovery + timeline + ADDED/REMOVED/CHANGED diff
+- Global search + Ctrl+K command palette (`open device`, `find IP`, `show VLAN`, `trace MAC`)
+- Object audit history (created / first seen / last seen / changes)
+- Integration-ready stubs: `connectors/` (Zabbix, NetBox, CMDB) and `plugins/` hooks
 - Stack-first inventory for Eltex, Mikrotik, UniFi, Proxmox, vSphere/ESXi, Ideco, Kyocera
 - Onboard observability: Syslog server, SMTP alerts, Zabbix-like triggers, partial SIEM
-- Interactive topology (Cytoscape) with interface-level links, speed, LACP, VLAN, trunk
-- Cable path visualization between endpoints
-- Immutable snapshots after every discovery + diff
 - IPAM with used/free/conflict tracking
-- Monitoring metrics (CPU, RAM, temperature, interface counters; toner for printers)
 - Export: Draw.io, Visio (VSDX), SVG, PNG, PDF, JSON, GraphML
 - Offline-first UI (no CDN), HTTPS-only edge, JWT + RBAC, AES-256-GCM secrets vault
+
+### Product docs
+
+- [`docs/DEVICE_INTELLIGENCE.md`](docs/DEVICE_INTELLIGENCE.md)
+- [`docs/TOPOLOGY_ENGINE.md`](docs/TOPOLOGY_ENGINE.md)
+- [`docs/MAC_TRACE.md`](docs/MAC_TRACE.md)
+- [`docs/VLAN_MODEL.md`](docs/VLAN_MODEL.md)
 
 ## Quick install (Ubuntu 22.04 / 24.04)
 

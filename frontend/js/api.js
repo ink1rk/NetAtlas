@@ -146,5 +146,19 @@ const Api = (() => {
     createPrefix: (data) => request('/ipam/prefixes', { method: 'POST', body: JSON.stringify(data) }),
     listAddresses: (prefixId, params) => request(`/ipam/prefixes/${prefixId}/addresses` + qs(params || {})),
     listConflicts: () => request('/ipam/conflicts'),
+
+    // Device Intelligence / Digital Twin
+    deviceIntelligence: (id) => request(`/devices/${id}/intelligence`),
+    detectDeviceRole: (id) => request(`/devices/${id}/role/detect`, { method: 'POST', body: '{}' }),
+    detectAllRoles: () => request('/devices/roles/detect-all', { method: 'POST', body: '{}' }),
+    overrideDeviceRole: (id, body) => request(`/devices/${id}/role`, { method: 'PATCH', body: JSON.stringify(body) }),
+    updateDeviceMetadata: (id, body) => request(`/devices/${id}/metadata`, { method: 'PATCH', body: JSON.stringify(body) }),
+    traceMac: (q) => request('/trace/mac' + qs({ q })),
+    listVlans: () => request('/vlans'),
+    getVlan: (vlanId) => request(`/vlans/${vlanId}`),
+    auditTimeline: (params) => request('/audit/timeline' + qs(params || {})),
+    objectHistory: (type, id) => request(`/audit/objects/${type}/${id}`),
+    cableMap: () => request('/cable-map'),
+    topologyLayout: () => request('/topology/layout'),
   };
 })();

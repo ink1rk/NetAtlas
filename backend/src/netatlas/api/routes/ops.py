@@ -55,6 +55,8 @@ class SeedCreate(BaseModel):
 
 class JobCreate(BaseModel):
     seed_ids: list[UUID] = Field(default_factory=list)
+    scan_mode: str = Field(default="deep")
+    options: dict[str, Any] = Field(default_factory=dict)
 
 
 class SnapshotDiffRequest(BaseModel):
@@ -154,12 +156,27 @@ async def start_job(
     settings: Annotated[Settings, Depends(get_settings)],
     _user: Annotated[Any, Depends(require_permission("discovery:write"))],
 ) -> dict[str, Any]:
+    mode = (body.scan_mode or "deep").lower()
+    if mode not in {"fast", "deep", "topology"}:
+        raise HTTPException(status_code=400, detail="scan_mode must be fast|deep|topology")
+    timeouts = {
+        "fast": {"icmp_timeout": 0.4, "snmp_timeout": 1.5, "ssh_timeout": 10.0},
+        "deep": {"icmp_timeout": 1.0, "snmp_timeout": 3.0, "ssh_timeout": 25.0},
+        "topology": {"icmp_timeout": 0.8, "snmp_timeout": 2.5, "ssh_timeout": 20.0},
+    }.get(mode, {"icmp_timeout": 1.0, "snmp_timeout": 2.0, "ssh_timeout": 20.0})
     job = DiscoveryJob(
         id=uuid4(),
         status=JobStatus.PENDING,
         started_at=None,
         finished_at=None,
-        config={"seed_ids": [str(x) for x in body.seed_ids]},
+        config={
+            "seed_ids": [str(x) for x in body.seed_ids],
+            "scan_mode": mode,
+            "topology_discovery": mode in ("deep", "topology"),
+            "deep_scan": mode == "deep",
+            **timeouts,
+            **(body.options or {}),
+        },
         stats={},
     )
     await SqlAlchemyDiscoveryJobRepository(session).add(job)
@@ -195,6 +212,12 @@ def _job_dict(job: DiscoveryJob) -> dict[str, Any]:
         "finished_at": job.finished_at.isoformat() if job.finished_at else None,
         "stats": job.stats,
         "error": job.error,
+        "config": {
+            "scan_mode": (job.config or {}).get("scan_mode"),
+            "seed_ids": (job.config or {}).get("seed_ids") or [],
+            "topology_discovery": (job.config or {}).get("topology_discovery"),
+            "deep_scan": (job.config or {}).get("deep_scan"),
+        },
     }
 
 

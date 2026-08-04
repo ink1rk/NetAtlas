@@ -41,6 +41,11 @@ async def topology_graph(
             "platform": d.platform,
             "vendor": d.vendor,
             "status": d.status,
+            "network_role": getattr(d, "network_role", None) or "unknown",
+            "role_confidence": float(getattr(d, "role_confidence", 0) or 0),
+            "role": getattr(d, "network_role", None) or "unknown",
+            "location": getattr(d, "location", None),
+            "criticality": getattr(d, "criticality", None) or "normal",
         }
         for d in devices
     ]
@@ -59,12 +64,27 @@ async def topology_graph(
         for link in links
     ]
     nodes, edges = TopologyBuilder().build(device_dicts, link_dicts, interfaces_by_id)
+    from netatlas.domain.services.intelligence import HierarchicalLayout
+
+    edge_simple = [{"source": e.source, "target": e.target} for e in edges]
+    layout = HierarchicalLayout().assign(device_dicts, edge_simple)
     return {
-        "nodes": [{"id": n.id, "label": n.label, "kind": n.kind, "data": n.data} for n in nodes],
+        "nodes": [
+            {
+                "id": n.id,
+                "label": n.label,
+                "kind": n.kind,
+                "type": n.data.get("platform") or n.kind,
+                "role": n.data.get("network_role") or n.data.get("role") or "unknown",
+                "data": {**n.data, "layout": layout.get(n.id, {})},
+            }
+            for n in nodes
+        ],
         "edges": [
             {"id": e.id, "source": e.source, "target": e.target, "label": e.label, "data": e.data}
             for e in edges
         ],
+        "layout": {"algorithm": "role-hierarchy", "nodes": layout},
     }
 
 
