@@ -328,8 +328,12 @@ class SqlAlchemyDiscoverySeedRepository:
                 id=r.id,
                 target=r.target,
                 label=r.label,
-                enabled=r.enabled,
-                credential_profile_ids=[UUID(x) for x in (r.credential_profile_ids or [])],
+                enabled=bool(r.enabled),
+                credential_profile_ids=[
+                    x if isinstance(x, UUID) else UUID(str(x))
+                    for x in (r.credential_profile_ids or [])
+                    if x
+                ],
             )
             for r in rows
         ]
