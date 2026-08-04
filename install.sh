@@ -61,12 +61,17 @@ ensure_user() {
 }
 
 prepare_dirs() {
+  # Root operating on a netatlas-owned tree trips "dubious ownership".
+  git_na() {
+    git -c "safe.directory=${NETATLAS_HOME}" "$@"
+  }
+
   # Runtime dirs created AFTER the repo is in place. Creating them first made
   # /opt/netatlas non-empty and broke `git clone` on first/retry installs.
   if [[ -d "${NETATLAS_HOME}/.git" ]]; then
     log "Updating existing repository at ${NETATLAS_HOME}"
-    git -C "${NETATLAS_HOME}" fetch --depth 1 origin "${BRANCH}"
-    git -C "${NETATLAS_HOME}" checkout -B "${BRANCH}" "FETCH_HEAD"
+    git_na -C "${NETATLAS_HOME}" fetch --depth 1 origin "${BRANCH}"
+    git_na -C "${NETATLAS_HOME}" checkout -B "${BRANCH}" "FETCH_HEAD"
   elif [[ -f "${PWD}/docker-compose.yml" ]]; then
     log "Using local repository copy at ${PWD}"
     mkdir -p "${NETATLAS_HOME}"
@@ -91,7 +96,7 @@ prepare_dirs() {
           fi
         done
         rm -rf "${NETATLAS_HOME}"
-        git clone --branch "${BRANCH}" --depth 1 "${REPO_URL}" "${NETATLAS_HOME}"
+        git_na clone --branch "${BRANCH}" --depth 1 "${REPO_URL}" "${NETATLAS_HOME}"
         for item in data logs .env deploy/certs; do
           if [[ -e "${preserve}/${item}" ]]; then
             mkdir -p "$(dirname "${NETATLAS_HOME}/${item}")"
@@ -102,7 +107,7 @@ prepare_dirs() {
         rm -rf "${preserve}"
       fi
     else
-      git clone --branch "${BRANCH}" --depth 1 "${REPO_URL}" "${NETATLAS_HOME}"
+      git_na clone --branch "${BRANCH}" --depth 1 "${REPO_URL}" "${NETATLAS_HOME}"
     fi
   fi
   mkdir -p "${NETATLAS_HOME}"/{deploy/certs,data,logs}

@@ -5,12 +5,17 @@ set -euo pipefail
 NETATLAS_HOME="${NETATLAS_HOME:-/opt/netatlas}"
 BRANCH="${BRANCH:-main}"
 
+# Root updating a netatlas-owned tree trips "dubious ownership" — allow this path.
+git_na() {
+  git -c "safe.directory=${NETATLAS_HOME}" "$@"
+}
+
 cd "${NETATLAS_HOME}"
 
 echo "[netatlas] Fetching ${BRANCH}…"
-git fetch --depth 1 origin "${BRANCH}"
-git checkout -B "${BRANCH}" "FETCH_HEAD"
-git reset --hard "FETCH_HEAD"
+git_na fetch --depth 1 origin "${BRANCH}"
+git_na checkout -B "${BRANCH}" "FETCH_HEAD"
+git_na reset --hard "FETCH_HEAD"
 
 echo "[netatlas] Rebuilding frontend (no cache) and recreating containers…"
 docker compose build --no-cache frontend
