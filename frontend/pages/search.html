@@ -5,41 +5,108 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=i18n2">
+  <link rel="stylesheet" href="/css/app.css?v=ux1">
 </head>
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-  <script src="/js/i18n.js?v=i18n2"></script>
-  <script src="/js/api.js?v=i18n2"></script>
-  <script src="/js/auth.js?v=i18n2"></script>
-  <script src="/js/app.js?v=i18n2"></script>
+  <script src="/js/i18n.js?v=ux1"></script>
+  <script src="/js/api.js?v=ux1"></script>
+  <script src="/js/auth.js?v=ux1"></script>
+  <script src="/js/ui.js?v=ux1"></script>
+  <script src="/js/app.js?v=ux1"></script>
   <script>
+    let activeTab = 'all';
+    let lastData = null;
+
     App.initShell('search', 'title.search', (el) => {
       el.innerHTML = `
+        <div class="page-intro">
+          <p class="subtitle">${I18n.t('search.type_hint')}</p>
+        </div>
         <div class="panel mb-3">
           <div class="panel-body">
-            <form id="search-form" class="d-flex gap-2">
-              <input type="text" id="search-q" class="form-control form-na" placeholder="${I18n.t('search.placeholder')}" autofocus>
+            <form id="search-form" class="search-form">
+              <input type="search" id="search-q" class="form-control form-na" placeholder="${I18n.t('search.placeholder')}" autofocus>
               <button type="submit" class="btn-na btn-na-primary">${I18n.t('common.search')}</button>
             </form>
+            <p class="form-hint mt-2 mb-2">${I18n.t('search.live')}</p>
+            <div class="hint-row" id="recent-chips"></div>
           </div>
+        </div>
+        <div class="tab-bar" id="result-tabs" hidden>
+          <button class="tab-btn active" data-tab="all">${I18n.t('search.all')}</button>
+          <button class="tab-btn" data-tab="devices">${I18n.t('nav.devices')}</button>
+          <button class="tab-btn" data-tab="interfaces">${I18n.t('device.tab_ifaces')}</button>
+          <button class="tab-btn" data-tab="addresses">${I18n.t('ipam.addresses')}</button>
         </div>
         <div id="search-results"><p class="empty-state">${I18n.t('search.hint')}</p></div>
       `;
-      const q = App.queryParam('q');
-      if (q) {
-        document.getElementById('search-q').value = q;
-        runSearch(q);
-      }
+
+      renderRecent();
+      const input = document.getElementById('search-q');
+      Ui.attachAutocomplete(input, {
+        minChars: 1,
+        getSuggestions: async (q) => {
+          const data = await Api.searchSuggest(q, 8);
+          return (data.suggestions || []).map((s) => ({
+            value: s.label, label: s.label, subtitle: s.subtitle, href: s.href,
+          }));
+        },
+        onSelect: (it) => {
+          if (it.href) {
+            Ui.pushRecent('search', it.label || it.value);
+            window.location.href = it.href;
+            return;
+          }
+          input.value = it.value || it.label;
+          submitSearch();
+        },
+        emptySuggestions: async () => Ui.loadRecent('search').map((v) => ({
+          value: v, label: v, subtitle: I18n.t('search.recent'),
+        })),
+      });
+
+      const live = Ui.debounce(() => {
+        const q = input.value.trim();
+        if (q.length >= 2) runSearch(q, false);
+      }, 350);
+      input.addEventListener('input', live);
+
       document.getElementById('search-form').addEventListener('submit', (e) => {
         e.preventDefault();
-        const query = document.getElementById('search-q').value.trim();
-        if (query) {
-          history.replaceState(null, '', `?q=${encodeURIComponent(query)}`);
-          runSearch(query);
-        }
+        submitSearch();
       });
+      document.getElementById('result-tabs').addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-tab]');
+        if (!btn || !lastData) return;
+        activeTab = btn.dataset.tab;
+        document.querySelectorAll('#result-tabs .tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
+        renderResults(input.value.trim(), lastData);
+      });
+
+      const q = App.queryParam('q');
+      if (q) {
+        input.value = q;
+        runSearch(q, true);
+      }
     });
+
+    function renderRecent() {
+      const host = document.getElementById('recent-chips');
+      const items = Ui.loadRecent('search');
+      if (!items.length) { host.innerHTML = ''; return; }
+      Ui.hintChips(host, items.map((v) => ({ value: v, label: v })), (value) => {
+        document.getElementById('search-q').value = value;
+        submitSearch();
+      });
+    }
+
+    function submitSearch() {
+      const query = document.getElementById('search-q').value.trim();
+      if (!query) return;
+      history.replaceState(null, '', `?q=${encodeURIComponent(query)}`);
+      runSearch(query, true);
+    }
 
     function pluralResults(n) {
       if (I18n.lang() === 'en') return I18n.t(n === 1 ? 'search.result_one' : 'search.result_many', { n });
@@ -50,43 +117,59 @@
       return I18n.t('search.result_many', { n });
     }
 
-    async function runSearch(q) {
+    async function runSearch(q, pushHistory) {
       const el = document.getElementById('search-results');
       el.innerHTML = `<p class="empty-state">${I18n.t('search.searching')}</p>`;
       try {
         const data = await Api.search(q);
-        const devices = data.devices || [];
-        const interfaces = data.interfaces || [];
-        const addresses = data.addresses || [];
-        const total = devices.length + interfaces.length + addresses.length;
-        if (!total) {
-          el.innerHTML = `<p class="empty-state">${I18n.t('search.no_results', { q: App.escapeHtml(q) })}</p>`;
-          return;
+        lastData = data;
+        if (pushHistory) {
+          Ui.pushRecent('search', q);
+          renderRecent();
         }
-        el.innerHTML = `
-          <p class="text-muted mb-3">${pluralResults(total)} — «<strong>${App.escapeHtml(q)}</strong>»</p>
-          ${devices.length ? `<div class="search-hit-group panel mb-3"><div class="panel-header"><h3>${I18n.t('search.devices', { n: devices.length })}</h3></div><div class="panel-body p-0">
-            ${devices.map(d => `<a href="/pages/device-detail.html?id=${d.id}" class="search-hit d-block text-decoration-none">
-              <div><strong>${App.escapeHtml(d.hostname)}</strong> <span class="mono text-muted">${App.escapeHtml(d.management_ip)}</span></div>
-              <span class="text-muted">${App.escapeHtml(d.vendor)} · ${App.escapeHtml(d.platform)}</span>
-            </a>`).join('')}
-          </div></div>` : ''}
-          ${interfaces.length ? `<div class="search-hit-group panel mb-3"><div class="panel-header"><h3>${I18n.t('search.interfaces', { n: interfaces.length })}</h3></div><div class="panel-body p-0">
-            ${interfaces.map(i => `<div class="search-hit">
-              <div><span class="mono"><strong>${App.escapeHtml(i.name)}</strong></span> ${App.escapeHtml(i.description || '')}</div>
-              <span class="mono text-muted">${App.escapeHtml(i.mac)}</span>
-            </div>`).join('')}
-          </div></div>` : ''}
-          ${addresses.length ? `<div class="search-hit-group panel mb-3"><div class="panel-header"><h3>${I18n.t('search.addresses', { n: addresses.length })}</h3></div><div class="panel-body p-0">
-            ${addresses.map(a => `<div class="search-hit">
-              <div class="mono"><strong>${App.escapeHtml(a.address)}</strong> ${App.escapeHtml(a.hostname || '')}</div>
-              <span class="text-muted">${App.statusBadge(a.status)} ${a.is_conflict ? '· ' + I18n.t('search.conflict') : ''}</span>
-            </div>`).join('')}
-          </div></div>` : ''}
-        `;
+        const total = (data.devices || []).length + (data.interfaces || []).length + (data.addresses || []).length;
+        document.getElementById('result-tabs').hidden = total === 0;
+        renderResults(q, data);
       } catch (err) {
+        document.getElementById('result-tabs').hidden = true;
         el.innerHTML = `<div class="alert-na error">${App.escapeHtml(err.message)}</div>`;
       }
+    }
+
+    function renderResults(q, data) {
+      const el = document.getElementById('search-results');
+      const devices = data.devices || [];
+      const interfaces = data.interfaces || [];
+      const addresses = data.addresses || [];
+      const showDevices = activeTab === 'all' || activeTab === 'devices';
+      const showIfaces = activeTab === 'all' || activeTab === 'interfaces';
+      const showAddrs = activeTab === 'all' || activeTab === 'addresses';
+      const total = devices.length + interfaces.length + addresses.length;
+      if (!total) {
+        el.innerHTML = `<p class="empty-state">${I18n.t('search.no_results', { q: App.escapeHtml(q) })}</p>`;
+        return;
+      }
+      el.innerHTML = `
+        <p class="text-muted mb-3">${pluralResults(total)} — «<strong>${App.escapeHtml(q)}</strong>»</p>
+        ${showDevices && devices.length ? `<div class="search-hit-group panel mb-3"><div class="panel-header"><h3>${I18n.t('search.devices', { n: devices.length })}</h3></div><div class="panel-body p-0">
+          ${devices.map(d => `<a href="/pages/device-detail.html?id=${d.id}" class="search-hit d-block text-decoration-none">
+            <div><strong>${Ui.highlight(d.hostname, q)}</strong> <span class="mono text-muted">${Ui.highlight(d.management_ip, q)}</span> ${App.statusBadge(d.status)}</div>
+            <span class="text-muted">${App.escapeHtml([d.vendor, d.model, d.platform].filter(Boolean).join(' · '))}</span>
+          </a>`).join('')}
+        </div></div>` : ''}
+        ${showIfaces && interfaces.length ? `<div class="search-hit-group panel mb-3"><div class="panel-header"><h3>${I18n.t('search.interfaces', { n: interfaces.length })}</h3></div><div class="panel-body p-0">
+          ${interfaces.map(i => `<a class="search-hit d-block text-decoration-none" href="${i.device_id ? `/pages/device-detail.html?id=${i.device_id}` : '#'}">
+            <div><span class="mono"><strong>${Ui.highlight(i.name, q)}</strong></span> ${App.escapeHtml(i.description || '')}</div>
+            <span class="mono text-muted">${App.escapeHtml(i.mac || '')}</span>
+          </a>`).join('')}
+        </div></div>` : ''}
+        ${showAddrs && addresses.length ? `<div class="search-hit-group panel mb-3"><div class="panel-header"><h3>${I18n.t('search.addresses', { n: addresses.length })}</h3></div><div class="panel-body p-0">
+          ${addresses.map(a => `<div class="search-hit">
+            <div class="mono"><strong>${Ui.highlight(a.address, q)}</strong> ${Ui.highlight(a.hostname || '', q)}</div>
+            <span class="text-muted">${App.statusBadge(a.status)} ${a.is_conflict ? '· ' + I18n.t('search.conflict') : ''}</span>
+          </div>`).join('')}
+        </div></div>` : ''}
+      `;
     }
   </script>
 </body>

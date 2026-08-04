@@ -5,66 +5,160 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=i18n2">
+  <link rel="stylesheet" href="/css/app.css?v=ux1">
 </head>
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-  <script src="/js/i18n.js?v=i18n2"></script>
-  <script src="/js/api.js?v=i18n2"></script>
-  <script src="/js/auth.js?v=i18n2"></script>
-  <script src="/js/app.js?v=i18n2"></script>
+  <script src="/js/i18n.js?v=ux1"></script>
+  <script src="/js/api.js?v=ux1"></script>
+  <script src="/js/auth.js?v=ux1"></script>
+  <script src="/js/ui.js?v=ux1"></script>
+  <script src="/js/app.js?v=ux1"></script>
   <script>
     let page = 1;
     const pageSize = 50;
+    let facets = { vendors: [], platforms: [], statuses: [], suggested_vendors: [] };
 
-    App.initShell('devices', 'title.devices', (el) => {
+    App.initShell('devices', 'title.devices', async (el) => {
       el.innerHTML = `
+        <div class="page-intro">
+          <p class="subtitle">${I18n.t('devices.live_hint')}</p>
+        </div>
         <div class="panel">
-          <div class="panel-header">
+          <div class="panel-header panel-header--wrap">
             <h3>${I18n.t('devices.all')}</h3>
-            <div class="d-flex gap-2">
-              <input type="text" id="filter-q" class="form-control form-control-sm" placeholder="${I18n.t('devices.search_ph')}" style="width:200px">
-              <input type="text" id="filter-vendor" class="form-control form-control-sm" placeholder="${I18n.t('devices.vendor_ph')}" style="width:120px">
-              <button class="btn-na" id="btn-filter">${I18n.t('common.filter')}</button>
+            <div class="filter-bar" id="filter-bar">
+              <input type="search" id="filter-q" class="form-control" placeholder="${I18n.t('devices.search_ph')}" />
+              <input type="text" id="filter-vendor" class="form-control" placeholder="${I18n.t('devices.vendor_ph')}" list="vendor-list" />
+              <datalist id="vendor-list"></datalist>
+              <select id="filter-status" class="form-select">
+                <option value="">${I18n.t('devices.status_ph')}</option>
+              </select>
+              <select id="filter-platform" class="form-select">
+                <option value="">${I18n.t('devices.platform_ph')}</option>
+              </select>
+              <button class="btn-na" id="btn-clear" type="button">${I18n.t('devices.clear')}</button>
             </div>
           </div>
+          <div class="panel-body py-2" id="vendor-chips"></div>
           <div id="devices-table" class="panel-body p-0"><p class="empty-state">${I18n.t('common.loading')}</p></div>
         </div>
       `;
-      document.getElementById('btn-filter').addEventListener('click', () => { page = 1; loadDevices(el); });
-      document.getElementById('filter-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') { page = 1; loadDevices(el); } });
-      loadDevices(el);
+
+      try { facets = await Api.deviceFacets(); } catch { /* ignore */ }
+      const vendorList = document.getElementById('vendor-list');
+      const allVendors = [...new Set([...(facets.vendors || []), ...(facets.suggested_vendors || [])])];
+      vendorList.innerHTML = allVendors.map((v) => `<option value="${App.escapeHtml(v)}">`).join('');
+      document.getElementById('filter-status').innerHTML =
+        `<option value="">${I18n.t('devices.status_ph')}</option>` +
+        (facets.statuses || ['up', 'down', 'unknown']).map((s) =>
+          `<option value="${App.escapeHtml(s)}">${App.escapeHtml(I18n.statusLabel(s))}</option>`
+        ).join('');
+      document.getElementById('filter-platform').innerHTML =
+        `<option value="">${I18n.t('devices.platform_ph')}</option>` +
+        (facets.platforms || []).map((p) =>
+          `<option value="${App.escapeHtml(p)}">${App.escapeHtml(p)}</option>`
+        ).join('');
+
+      Ui.hintChips(
+        document.getElementById('vendor-chips'),
+        (facets.suggested_vendors || []).map((v) => ({ value: v, label: v })),
+        (value) => {
+          document.getElementById('filter-vendor').value = value;
+          page = 1;
+          loadDevices();
+        }
+      );
+
+      const qInput = document.getElementById('filter-q');
+      Ui.attachAutocomplete(qInput, {
+        minChars: 1,
+        getSuggestions: async (q) => {
+          const data = await Api.searchSuggest(q, 8);
+          return (data.suggestions || []).map((s) => ({
+            value: s.label, label: s.label, subtitle: s.subtitle, href: s.href,
+          }));
+        },
+        onSelect: (it) => {
+          if (it.href) { window.location.href = it.href; return; }
+          qInput.value = it.value || it.label;
+          page = 1;
+          loadDevices();
+        },
+      });
+
+      const reload = Ui.debounce(() => { page = 1; loadDevices(); }, 280);
+      ['filter-q', 'filter-vendor'].forEach((id) => {
+        document.getElementById(id).addEventListener('input', reload);
+      });
+      ['filter-status', 'filter-platform'].forEach((id) => {
+        document.getElementById(id).addEventListener('change', () => { page = 1; loadDevices(); });
+      });
+      document.getElementById('btn-clear').addEventListener('click', () => {
+        document.getElementById('filter-q').value = '';
+        document.getElementById('filter-vendor').value = '';
+        document.getElementById('filter-status').value = '';
+        document.getElementById('filter-platform').value = '';
+        page = 1;
+        loadDevices();
+      });
+
+      loadDevices();
     });
 
-    async function loadDevices(el) {
+    async function loadDevices() {
       const container = document.getElementById('devices-table');
       try {
+        const q = document.getElementById('filter-q')?.value.trim() || undefined;
         const data = await Api.listDevices({
           page,
           page_size: pageSize,
-          q: document.getElementById('filter-q')?.value || undefined,
-          vendor: document.getElementById('filter-vendor')?.value || undefined,
+          q,
+          vendor: document.getElementById('filter-vendor')?.value.trim() || undefined,
+          status: document.getElementById('filter-status')?.value || undefined,
+          platform: document.getElementById('filter-platform')?.value || undefined,
         });
         if (!data.items?.length) {
-          container.innerHTML = `<p class="empty-state">${I18n.t('devices.empty')}</p>`;
+          const emptyMsg = (!q && !document.getElementById('filter-vendor').value)
+            ? `${I18n.t('devices.no_inventory')} <a href="/pages/discovery.html">${I18n.t('devices.go_discovery')}</a>`
+            : I18n.t('devices.empty');
+          container.innerHTML = `<p class="empty-state">${emptyMsg}</p>`;
           return;
         }
         const totalPages = Math.ceil((data.total || 0) / pageSize);
         container.innerHTML = `
-          <table class="data-table"><thead><tr>
-            <th>${I18n.t('common.hostname')}</th><th>${I18n.t('common.vendor')}</th><th>${I18n.t('common.model')}</th><th>${I18n.t('devices.platform')}</th>
-            <th>${I18n.t('devices.mgmt_ip')}</th><th>${I18n.t('devices.os')}</th><th>${I18n.t('common.status')}</th><th>${I18n.t('devices.last_seen')}</th>
-          </tr></thead>
-          <tbody>${data.items.map(d => `<tr style="cursor:pointer" onclick="location.href='/pages/device-detail.html?id=${d.id}'">
-            <td><strong>${App.escapeHtml(d.hostname)}</strong></td>
-            <td>${App.escapeHtml(d.vendor)}</td>
-            <td>${App.escapeHtml(d.model)}</td>
-            <td class="mono">${App.escapeHtml(d.platform)}</td>
-            <td class="mono">${App.escapeHtml(d.management_ip)}</td>
-            <td class="mono">${App.escapeHtml(d.os_version || d.firmware)}</td>
-            <td>${App.statusBadge(d.status)}</td>
-            <td>${App.formatDate(d.last_seen_at)}</td>
-          </tr>`).join('')}</tbody></table>
+          <div class="device-grid d-xl-none">
+            ${data.items.map((d) => `
+              <a class="device-card" href="/pages/device-detail.html?id=${d.id}">
+                <div class="device-card-top">
+                  <strong>${Ui.highlight(d.hostname, q)}</strong>
+                  ${App.statusBadge(d.status)}
+                </div>
+                <div class="device-card-meta mono">${App.escapeHtml(d.management_ip || '—')}</div>
+                <div class="device-card-meta">${App.escapeHtml([d.vendor, d.model, d.platform].filter(Boolean).join(' · '))}</div>
+                <div class="device-card-foot">
+                  <span>${App.formatDate(d.last_seen_at)}</span>
+                  <span>${I18n.t('devices.open')} →</span>
+                </div>
+              </a>
+            `).join('')}
+          </div>
+          <div class="table-scroll d-none d-xl-block">
+            <table class="data-table"><thead><tr>
+              <th>${I18n.t('common.hostname')}</th><th>${I18n.t('common.vendor')}</th><th>${I18n.t('common.model')}</th><th>${I18n.t('devices.platform')}</th>
+              <th>${I18n.t('devices.mgmt_ip')}</th><th>${I18n.t('devices.os')}</th><th>${I18n.t('common.status')}</th><th>${I18n.t('devices.last_seen')}</th>
+            </tr></thead>
+            <tbody>${data.items.map(d => `<tr style="cursor:pointer" onclick="location.href='/pages/device-detail.html?id=${d.id}'">
+              <td><strong>${Ui.highlight(d.hostname, q)}</strong></td>
+              <td>${App.escapeHtml(d.vendor)}</td>
+              <td>${App.escapeHtml(d.model)}</td>
+              <td class="mono">${App.escapeHtml(d.platform)}</td>
+              <td class="mono">${Ui.highlight(d.management_ip, q)}</td>
+              <td class="mono">${App.escapeHtml(d.os_version || d.firmware)}</td>
+              <td>${App.statusBadge(d.status)}</td>
+              <td>${App.formatDate(d.last_seen_at)}</td>
+            </tr>`).join('')}</tbody></table>
+          </div>
           <div class="pagination-bar">
             <span>${I18n.t('devices.count', { n: data.total ?? data.items.length })}</span>
             <div class="d-flex gap-2">
@@ -74,8 +168,8 @@
             </div>
           </div>
         `;
-        document.getElementById('prev-page')?.addEventListener('click', () => { page--; loadDevices(el); });
-        document.getElementById('next-page')?.addEventListener('click', () => { page++; loadDevices(el); });
+        document.getElementById('prev-page')?.addEventListener('click', () => { page--; loadDevices(); });
+        document.getElementById('next-page')?.addEventListener('click', () => { page++; loadDevices(); });
       } catch (err) {
         container.innerHTML = `<div class="alert-na error m-3">${App.escapeHtml(err.message)}</div>`;
       }

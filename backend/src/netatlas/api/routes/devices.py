@@ -6,7 +6,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import or_, select
+from sqlalchemy import String, cast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from netatlas.api.deps import device_to_dict, get_db, require_permission
@@ -32,14 +32,58 @@ async def list_devices(
     page_size: int = Query(50, ge=1, le=200),
     q: str | None = None,
     vendor: str | None = None,
+    status: str | None = None,
+    platform: str | None = None,
 ) -> dict[str, Any]:
     repo = SqlAlchemyDeviceRepository(session)
-    items, total = await repo.list(page=page, page_size=page_size, q=q, vendor=vendor)
+    items, total = await repo.list(
+        page=page, page_size=page_size, q=q, vendor=vendor, status=status, platform=platform
+    )
     return {
         "items": [device_to_dict(d) for d in items],
         "total": total,
         "page": page,
         "page_size": page_size,
+    }
+
+
+@router.get("/devices/facets")
+async def device_facets(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    _user: Annotated[Any, Depends(require_permission("inventory:read"))],
+) -> dict[str, Any]:
+    """Distinct vendors/platforms/statuses for filter suggestions."""
+    vendors = (
+        await session.execute(
+            select(DeviceModel.vendor)
+            .where(DeviceModel.vendor.is_not(None), DeviceModel.vendor != "")
+            .distinct()
+            .order_by(DeviceModel.vendor)
+            .limit(100)
+        )
+    ).scalars().all()
+    platforms = (
+        await session.execute(
+            select(DeviceModel.platform)
+            .where(DeviceModel.platform.is_not(None), DeviceModel.platform != "")
+            .distinct()
+            .order_by(DeviceModel.platform)
+            .limit(50)
+        )
+    ).scalars().all()
+    statuses = (
+        await session.execute(
+            select(DeviceModel.status)
+            .where(DeviceModel.status.is_not(None), DeviceModel.status != "")
+            .distinct()
+            .order_by(DeviceModel.status)
+        )
+    ).scalars().all()
+    return {
+        "vendors": list(vendors),
+        "platforms": list(platforms),
+        "statuses": list(statuses),
+        "suggested_vendors": ["Eltex", "MikroTik", "UniFi", "Proxmox", "VMware", "Ideco", "Kyocera"],
     }
 
 
@@ -211,34 +255,60 @@ async def device_routes(
 async def search(
     session: Annotated[AsyncSession, Depends(get_db)],
     _user: Annotated[Any, Depends(require_permission("inventory:read"))],
-    q: str = Query(min_length=1),
+    q: str = Query(min_length=1, max_length=128),
+    limit: int = Query(50, ge=1, le=100),
 ) -> dict[str, Any]:
-    like = f"%{q}%"
+    like = f"%{q.strip()}%"
+    device_filters = [
+        DeviceModel.hostname.ilike(like),
+        DeviceModel.serial.ilike(like),
+        DeviceModel.vendor.ilike(like),
+        DeviceModel.model.ilike(like),
+        DeviceModel.platform.ilike(like),
+        DeviceModel.firmware.ilike(like),
+        DeviceModel.os_version.ilike(like),
+    ]
+    # Management IP / MAC text search
+    try:
+        from sqlalchemy import cast, String
+
+        device_filters.append(cast(DeviceModel.management_ip, String).ilike(like))
+        device_filters.append(cast(DeviceModel.management_mac, String).ilike(like))
+    except Exception:
+        pass
+
     devices = (
         await session.execute(
-            select(DeviceModel)
-            .where(
-                or_(
-                    DeviceModel.hostname.ilike(like),
-                    DeviceModel.serial.ilike(like),
-                    DeviceModel.vendor.ilike(like),
-                    DeviceModel.model.ilike(like),
-                )
-            )
-            .limit(50)
+            select(DeviceModel).where(or_(*device_filters)).order_by(DeviceModel.hostname).limit(limit)
         )
     ).scalars().all()
     interfaces = (
         await session.execute(
             select(InterfaceModel)
-            .where(or_(InterfaceModel.name.ilike(like), InterfaceModel.description.ilike(like)))
-            .limit(50)
+            .where(
+                or_(
+                    InterfaceModel.name.ilike(like),
+                    InterfaceModel.description.ilike(like),
+                    cast(InterfaceModel.mac, String).ilike(like) if True else InterfaceModel.name.ilike(like),
+                )
+            )
+            .limit(limit)
         )
     ).scalars().all()
     addresses = (
-        await session.execute(select(IpAddressModel).where(IpAddressModel.hostname.ilike(like)).limit(50))
+        await session.execute(
+            select(IpAddressModel)
+            .where(
+                or_(
+                    IpAddressModel.hostname.ilike(like),
+                    cast(IpAddressModel.address, String).ilike(like),
+                )
+            )
+            .limit(limit)
+        )
     ).scalars().all()
     return {
+        "query": q.strip(),
         "devices": [
             {
                 "id": str(d.id),
@@ -258,6 +328,7 @@ async def search(
                 "name": i.name,
                 "description": i.description,
                 "device_id": str(i.device_id),
+                "mac": str(i.mac) if i.mac else None,
                 "oper_status": i.oper_status,
             }
             for i in interfaces
@@ -273,3 +344,44 @@ async def search(
             for a in addresses
         ],
     }
+
+
+@router.get("/search/suggest")
+async def search_suggest(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    _user: Annotated[Any, Depends(require_permission("inventory:read"))],
+    q: str = Query(min_length=1, max_length=128),
+    limit: int = Query(8, ge=1, le=20),
+) -> dict[str, Any]:
+    """Lightweight autocomplete suggestions for the global/device search."""
+    from sqlalchemy import cast, String
+
+    like = f"%{q.strip()}%"
+    rows = (
+        await session.execute(
+            select(DeviceModel)
+            .where(
+                or_(
+                    DeviceModel.hostname.ilike(like),
+                    DeviceModel.vendor.ilike(like),
+                    DeviceModel.model.ilike(like),
+                    cast(DeviceModel.management_ip, String).ilike(like),
+                )
+            )
+            .order_by(DeviceModel.hostname)
+            .limit(limit)
+        )
+    ).scalars().all()
+    suggestions = [
+        {
+            "type": "device",
+            "id": str(d.id),
+            "label": d.hostname,
+            "subtitle": " · ".join(
+                p for p in [str(d.management_ip) if d.management_ip else None, d.vendor, d.platform] if p
+            ),
+            "href": f"/pages/device-detail.html?id={d.id}",
+        }
+        for d in rows
+    ]
+    return {"query": q.strip(), "suggestions": suggestions}

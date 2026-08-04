@@ -117,12 +117,14 @@ const Api = (() => {
     readyz: () => request('/readyz'),
 
     listDevices: (params) => request('/devices' + qs(params)),
+    deviceFacets: () => request('/devices/facets'),
     getDevice: (id) => request(`/devices/${id}`),
     getDeviceInterfaces: (id) => request(`/devices/${id}/interfaces`),
     getDeviceNeighbors: (id) => request(`/devices/${id}/neighbors`),
     getDeviceMetrics: (id) => request(`/devices/${id}/metrics`),
 
-    search: (q) => request(`/search${qs({ q })}`),
+    search: (q, params) => request(`/search${qs({ q, ...(params || {}) })}`),
+    searchSuggest: (q, limit = 8) => request(`/search/suggest${qs({ q, limit })}`),
 
     topologyGraph: () => request('/topology/graph'),
     cablePath: (from, to) => request('/topology/cable-path' + qs({ from_device_id: from, to_device_id: to })),

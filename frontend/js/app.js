@@ -2,7 +2,7 @@
  * NetAtlas shared application utilities
  */
 const App = (() => {
-  const ASSET_V = 'i18n1';
+  const ASSET_V = 'ux1';
 
   function navSections() {
     return [
@@ -78,7 +78,7 @@ const App = (() => {
 
     return `
       <div class="app-shell">
-        <aside class="app-sidebar">
+        <aside class="app-sidebar" id="app-sidebar">
           <div class="sidebar-brand">
             ${LOGO_SVG}
             <span>NetAtlas</span>
@@ -90,7 +90,11 @@ const App = (() => {
           </div>
         </aside>
         <header class="app-topbar">
+          <button type="button" class="btn-na btn-menu" id="menu-btn" aria-label="Menu">☰</button>
           <h1 class="topbar-title">${escapeHtml(pageTitle)}</h1>
+          <div class="topbar-search ac-wrap">
+            <input type="search" id="global-search" class="form-control ac-input" placeholder="${I18n.t('shell.global_search')}" />
+          </div>
           <div class="topbar-actions">
             ${I18n.langSwitcherHtml()}
             <span class="mono text-muted" id="clock"></span>
@@ -109,11 +113,54 @@ const App = (() => {
     document.title = `${pageTitle} — NetAtlas`;
     document.body.innerHTML = renderShell(activePage, pageTitle);
     document.getElementById('logout-btn')?.addEventListener('click', () => Auth.logout());
+    document.getElementById('menu-btn')?.addEventListener('click', () => {
+      document.getElementById('app-sidebar')?.classList.toggle('open');
+    });
     I18n.bindLangSwitcher(document);
+    bindGlobalSearch();
     updateClock();
     setInterval(updateClock, 30000);
     const content = document.getElementById('page-content');
     if (renderContent) renderContent(content);
+  }
+
+  function bindGlobalSearch() {
+    const input = document.getElementById('global-search');
+    if (!input || typeof Ui === 'undefined') return;
+    Ui.attachAutocomplete(input, {
+      minChars: 1,
+      delay: 200,
+      emptySuggestions: async () => Ui.loadRecent('search').map((v) => ({
+        value: v, label: v, subtitle: I18n.t('shell.recent'),
+      })),
+      getSuggestions: async (q) => {
+        const data = await Api.searchSuggest(q, 8);
+        return (data.suggestions || []).map((s) => ({
+          value: s.label,
+          label: s.label,
+          subtitle: s.subtitle,
+          href: s.href,
+        }));
+      },
+      onSelect: (it) => {
+        if (it.href) {
+          Ui.pushRecent('search', it.label || it.value);
+          window.location.href = it.href;
+          return;
+        }
+        const q = it.value || it.label;
+        Ui.pushRecent('search', q);
+        window.location.href = `/pages/search.html?q=${encodeURIComponent(q)}`;
+      },
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const q = input.value.trim();
+        if (!q) return;
+        Ui.pushRecent('search', q);
+        window.location.href = `/pages/search.html?q=${encodeURIComponent(q)}`;
+      }
+    });
   }
 
   function updateClock() {

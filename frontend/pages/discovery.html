@@ -5,62 +5,127 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=i18n2">
+  <link rel="stylesheet" href="/css/app.css?v=ux1">
 </head>
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-  <script src="/js/i18n.js?v=i18n2"></script>
-  <script src="/js/api.js?v=i18n2"></script>
-  <script src="/js/auth.js?v=i18n2"></script>
-  <script src="/js/app.js?v=i18n2"></script>
+  <script src="/js/i18n.js?v=ux1"></script>
+  <script src="/js/api.js?v=ux1"></script>
+  <script src="/js/auth.js?v=ux1"></script>
+  <script src="/js/ui.js?v=ux1"></script>
+  <script src="/js/app.js?v=ux1"></script>
   <script>
+    const PRESETS = [
+      { value: '10.0.0.0/8', label: '10.0.0.0/8' },
+      { value: '10.120.111.0/24', label: '10.120.111.0/24' },
+      { value: '172.16.0.0/12', label: '172.16.0.0/12' },
+      { value: '192.168.0.0/16', label: '192.168.0.0/16' },
+      { value: '192.168.1.0/24', label: '192.168.1.0/24' },
+    ];
+
     App.initShell('discovery', 'title.discovery', (el) => {
       el.innerHTML = `
+        <div class="page-intro">
+          <p class="subtitle">${I18n.t('disc.how')}</p>
+        </div>
         <div class="row g-3">
           <div class="col-lg-5">
             <div class="panel">
               <div class="panel-header"><h3>${I18n.t('disc.seeds')}</h3></div>
               <div class="panel-body">
+                <p class="form-hint mb-3">${I18n.t('disc.hint')}</p>
                 <form id="seed-form" class="form-na mb-3">
                   <div class="mb-2">
                     <label>${I18n.t('disc.target')}</label>
-                    <input type="text" id="seed-target" class="form-control" placeholder="10.0.0.0/24" required>
+                    <input type="text" id="seed-target" class="form-control" placeholder="${I18n.t('disc.target_ph')}" required>
                   </div>
                   <div class="mb-2">
                     <label>${I18n.t('disc.label')}</label>
-                    <input type="text" id="seed-label" class="form-control" placeholder="${I18n.t('disc.label_ph')}">
+                    <input type="text" id="seed-label" class="form-control" placeholder="${I18n.t('disc.label_ph')}" list="label-presets">
+                    <datalist id="label-presets">
+                      <option value="${I18n.t('disc.label_ph')}">
+                      <option value="DMZ">
+                      <option value="Management">
+                      <option value="Wi-Fi">
+                      <option value="Servers">
+                    </datalist>
                   </div>
                   <button type="submit" class="btn-na btn-na-primary">${I18n.t('disc.add_seed')}</button>
                 </form>
+                <div class="form-hint mb-1">${I18n.t('disc.presets')}</div>
+                <div class="hint-row mb-3" id="cidr-presets"></div>
                 <div id="seeds-list"><p class="empty-state">${I18n.t('common.loading')}</p></div>
               </div>
             </div>
           </div>
           <div class="col-lg-7">
             <div class="panel">
-              <div class="panel-header">
+              <div class="panel-header panel-header--wrap">
                 <h3>${I18n.t('disc.jobs')}</h3>
-                <button class="btn-na btn-na-primary" id="btn-start-job">${I18n.t('disc.start')}</button>
+                <div class="d-flex gap-2 flex-wrap">
+                  <button class="btn-na btn-na-secondary" id="btn-start-selected">${I18n.t('disc.start_selected')}</button>
+                  <button class="btn-na btn-na-primary" id="btn-start-job">${I18n.t('disc.start_all')}</button>
+                </div>
               </div>
               <div class="panel-body p-0" id="jobs-list"><p class="empty-state">${I18n.t('common.loading')}</p></div>
             </div>
           </div>
         </div>
       `;
+
+      Ui.hintChips(document.getElementById('cidr-presets'), PRESETS, (value) => {
+        document.getElementById('seed-target').value = value;
+        document.getElementById('seed-target').focus();
+      });
+
+      Ui.attachAutocomplete(document.getElementById('seed-target'), {
+        minChars: 0,
+        emptySuggestions: async () => PRESETS.map((p) => ({ value: p.value, label: p.value, subtitle: I18n.t('disc.presets') })),
+        getSuggestions: async (q) => {
+          const fromPresets = PRESETS.filter((p) => p.value.includes(q)).map((p) => ({
+            value: p.value, label: p.value, subtitle: I18n.t('disc.presets'),
+          }));
+          const recent = Ui.loadRecent('seeds').filter((v) => v.includes(q)).map((v) => ({
+            value: v, label: v, subtitle: I18n.t('shell.recent'),
+          }));
+          return [...recent, ...fromPresets].slice(0, 8);
+        },
+        onSelect: (it) => {
+          document.getElementById('seed-target').value = it.value || it.label;
+        },
+      });
+
       document.getElementById('seed-form').addEventListener('submit', async (e) => {
         e.preventDefault();
+        const target = document.getElementById('seed-target').value.trim();
+        const label = document.getElementById('seed-label').value.trim() || undefined;
         try {
-          await Api.createSeed({
-            target: document.getElementById('seed-target').value.trim(),
-            label: document.getElementById('seed-label').value.trim() || undefined,
-          });
+          await Api.createSeed({ target, label });
+          Ui.pushRecent('seeds', target);
           document.getElementById('seed-form').reset();
+          Ui.toast(I18n.t('disc.added'), 'ok');
           loadSeeds();
-        } catch (err) { alert(err.message); }
+        } catch (err) { Ui.toast(err.message, 'error'); }
       });
+
       document.getElementById('btn-start-job').addEventListener('click', async () => {
-        try { await Api.startJob({}); loadJobs(); } catch (err) { alert(err.message); }
+        try {
+          await Api.startJob({});
+          Ui.toast(I18n.t('disc.job_started'), 'ok');
+          loadJobs();
+        } catch (err) { Ui.toast(err.message, 'error'); }
       });
+
+      document.getElementById('btn-start-selected').addEventListener('click', async () => {
+        const ids = [...document.querySelectorAll('.seed-check:checked')].map((el) => el.value);
+        if (!ids.length) { Ui.toast(I18n.t('disc.select_seeds'), 'info'); return; }
+        try {
+          await Api.startJob({ seed_ids: ids });
+          Ui.toast(I18n.t('disc.job_started'), 'ok');
+          loadJobs();
+        } catch (err) { Ui.toast(err.message, 'error'); }
+      });
+
       loadSeeds();
       loadJobs();
       setInterval(loadJobs, 10000);
@@ -72,20 +137,26 @@
         const seeds = await Api.listSeeds();
         if (!seeds?.length) { el.innerHTML = `<p class="empty-state">${I18n.t('disc.no_seeds')}</p>`; return; }
         el.innerHTML = seeds.map(s => `
-          <div class="d-flex justify-content-between align-items-center py-2 border-bottom" style="border-color:var(--na-border-subtle)!important">
-            <div>
-              <div class="mono">${App.escapeHtml(s.target)}</div>
-              <small class="text-muted">${App.escapeHtml(s.label || '')}</small>
-            </div>
-            <button class="btn-na btn-na-danger btn-sm" onclick="deleteSeed('${s.id}')">${I18n.t('common.remove')}</button>
+          <div class="seed-row">
+            <label class="seed-check-wrap">
+              <input type="checkbox" class="seed-check" value="${App.escapeHtml(s.id)}" checked>
+              <span>
+                <div class="mono">${App.escapeHtml(s.target)}</div>
+                <small class="text-muted">${App.escapeHtml(s.label || '')}</small>
+              </span>
+            </label>
+            <button class="btn-na btn-na-danger btn-sm" data-del="${App.escapeHtml(s.id)}">${I18n.t('common.remove')}</button>
           </div>
         `).join('');
+        el.querySelectorAll('[data-del]').forEach((btn) => {
+          btn.addEventListener('click', () => deleteSeed(btn.dataset.del));
+        });
       } catch (err) { el.innerHTML = `<div class="alert-na error">${App.escapeHtml(err.message)}</div>`; }
     }
 
     async function deleteSeed(id) {
       if (!confirm(I18n.t('disc.confirm_remove'))) return;
-      try { await Api.deleteSeed(id); loadSeeds(); } catch (err) { alert(err.message); }
+      try { await Api.deleteSeed(id); loadSeeds(); } catch (err) { Ui.toast(err.message, 'error'); }
     }
 
     async function loadJobs() {
@@ -93,15 +164,15 @@
       try {
         const jobs = await Api.listJobs();
         if (!jobs?.length) { el.innerHTML = `<p class="empty-state">${I18n.t('disc.no_jobs')}</p>`; return; }
-        el.innerHTML = `<table class="data-table"><thead><tr>
+        el.innerHTML = `<div class="table-scroll"><table class="data-table"><thead><tr>
           <th>ID</th><th>${I18n.t('common.status')}</th><th>${I18n.t('disc.started')}</th><th>${I18n.t('disc.finished')}</th><th>${I18n.t('disc.stats')}</th>
         </tr></thead><tbody>${jobs.map(j => `<tr>
           <td class="mono">${App.escapeHtml(j.id?.slice(0, 8))}…</td>
           <td>${App.statusBadge(j.status)}</td>
           <td>${App.formatDate(j.started_at)}</td>
           <td>${App.formatDate(j.finished_at)}</td>
-          <td class="mono">${j.stats ? JSON.stringify(j.stats) : '—'}</td>
-        </tr>`).join('')}</tbody></table>`;
+          <td class="mono">${j.stats && Object.keys(j.stats).length ? App.escapeHtml(JSON.stringify(j.stats)) : '—'}</td>
+        </tr>`).join('')}</tbody></table></div>`;
       } catch (err) { el.innerHTML = `<div class="alert-na error m-3">${App.escapeHtml(err.message)}</div>`; }
     }
   </script>

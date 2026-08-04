@@ -50,8 +50,17 @@ class SqlAlchemyDeviceRepository:
         return _device_from_model(m) if m else None
 
     async def list(
-        self, *, page: int, page_size: int, q: str | None = None, vendor: str | None = None
+        self,
+        *,
+        page: int,
+        page_size: int,
+        q: str | None = None,
+        vendor: str | None = None,
+        status: str | None = None,
+        platform: str | None = None,
     ) -> tuple[list[Device], int]:
+        from sqlalchemy import String, cast
+
         stmt = select(DeviceModel)
         count_stmt = select(func.count()).select_from(DeviceModel)
         if q:
@@ -61,13 +70,20 @@ class SqlAlchemyDeviceRepository:
                 DeviceModel.serial.ilike(like),
                 DeviceModel.model.ilike(like),
                 DeviceModel.vendor.ilike(like),
-                func.host(DeviceModel.management_ip).ilike(like),
+                DeviceModel.platform.ilike(like),
+                cast(DeviceModel.management_ip, String).ilike(like),
             )
             stmt = stmt.where(filt)
             count_stmt = count_stmt.where(filt)
         if vendor:
-            stmt = stmt.where(DeviceModel.vendor.ilike(vendor))
-            count_stmt = count_stmt.where(DeviceModel.vendor.ilike(vendor))
+            stmt = stmt.where(DeviceModel.vendor.ilike(f"%{vendor}%"))
+            count_stmt = count_stmt.where(DeviceModel.vendor.ilike(f"%{vendor}%"))
+        if status:
+            stmt = stmt.where(DeviceModel.status == status)
+            count_stmt = count_stmt.where(DeviceModel.status == status)
+        if platform:
+            stmt = stmt.where(DeviceModel.platform.ilike(f"%{platform}%"))
+            count_stmt = count_stmt.where(DeviceModel.platform.ilike(f"%{platform}%"))
         total = int((await self._session.execute(count_stmt)).scalar_one())
         rows = (
             await self._session.execute(
