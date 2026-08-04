@@ -1,24 +1,40 @@
 /**
- * NetAtlas shared application utilities
+ * NetAtlas — общие утилиты приложения
  */
 const App = (() => {
   const NAV = [
-    { section: 'Overview', items: [
-      { id: 'dashboard', label: 'Dashboard', href: '/pages/dashboard.html', icon: 'grid' },
-      { id: 'topology', label: 'Topology', href: '/pages/topology.html', icon: 'share' },
-      { id: 'monitoring', label: 'Monitoring', href: '/pages/monitoring.html', icon: 'activity' },
-      { id: 'observability', label: 'Observability', href: '/pages/observability.html', icon: 'shield' },
+    { section: 'Обзор', items: [
+      { id: 'dashboard', label: 'Панель', href: '/pages/dashboard.html', icon: 'grid' },
+      { id: 'topology', label: 'Топология', href: '/pages/topology.html', icon: 'share' },
+      { id: 'monitoring', label: 'Мониторинг', href: '/pages/monitoring.html', icon: 'activity' },
+      { id: 'observability', label: 'Наблюдаемость', href: '/pages/observability.html', icon: 'shield' },
     ]},
-    { section: 'Inventory', items: [
-      { id: 'devices', label: 'Devices', href: '/pages/devices.html', icon: 'server' },
-      { id: 'search', label: 'Search', href: '/pages/search.html', icon: 'search' },
+    { section: 'Инвентарь', items: [
+      { id: 'devices', label: 'Устройства', href: '/pages/devices.html', icon: 'server' },
+      { id: 'search', label: 'Поиск', href: '/pages/search.html', icon: 'search' },
       { id: 'ipam', label: 'IPAM', href: '/pages/ipam.html', icon: 'network' },
     ]},
-    { section: 'Operations', items: [
-      { id: 'discovery', label: 'Discovery', href: '/pages/discovery.html', icon: 'radar' },
-      { id: 'snapshots', label: 'Snapshots', href: '/pages/snapshots.html', icon: 'layers' },
+    { section: 'Операции', items: [
+      { id: 'discovery', label: 'Обнаружение', href: '/pages/discovery.html', icon: 'radar' },
+      { id: 'snapshots', label: 'Снимки', href: '/pages/snapshots.html', icon: 'layers' },
     ]},
   ];
+
+  const STATUS_LABELS = {
+    up: 'в сети',
+    down: 'недоступен',
+    running: 'выполняется',
+    completed: 'завершён',
+    failed: 'ошибка',
+    pending: 'ожидание',
+    cancelled: 'отменён',
+    problem: 'проблема',
+    ok: 'норма',
+    unknown: 'неизвестно',
+    used: 'занят',
+    free: 'свободен',
+    reserved: 'зарезервирован',
+  };
 
   const ICONS = {
     grid: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>',
@@ -46,7 +62,7 @@ const App = (() => {
   function formatDate(iso) {
     if (!iso) return '—';
     try {
-      return new Date(iso).toLocaleString(undefined, {
+      return new Date(iso).toLocaleString('ru-RU', {
         month: 'short', day: 'numeric', year: 'numeric',
         hour: '2-digit', minute: '2-digit',
       });
@@ -55,8 +71,9 @@ const App = (() => {
 
   function statusBadge(status) {
     const s = (status || 'unknown').toLowerCase();
-    const cls = ['up', 'down', 'running', 'completed', 'failed', 'pending', 'cancelled', 'problem', 'ok'].includes(s) ? s : 'unknown';
-    return `<span class="badge-status ${cls}">${escapeHtml(status || 'unknown')}</span>`;
+    const cls = Object.keys(STATUS_LABELS).includes(s) ? s : 'unknown';
+    const label = STATUS_LABELS[s] || status || STATUS_LABELS.unknown;
+    return `<span class="badge-status ${cls}">${escapeHtml(label)}</span>`;
   }
 
   function renderShell(activePage, pageTitle) {
@@ -80,8 +97,8 @@ const App = (() => {
           </div>
           <nav class="sidebar-nav">${navHtml}</nav>
           <div class="sidebar-footer">
-            <div>${escapeHtml(user?.username || 'operator')}</div>
-            <button class="btn-na" id="logout-btn" style="margin-top:0.5rem;width:100%">Sign out</button>
+            <div>${escapeHtml(user?.username || 'оператор')}</div>
+            <button class="btn-na" id="logout-btn" style="margin-top:0.5rem;width:100%">Выйти</button>
           </div>
         </aside>
         <header class="app-topbar">
@@ -107,7 +124,7 @@ const App = (() => {
 
   function updateClock() {
     const el = document.getElementById('clock');
-    if (el) el.textContent = new Date().toLocaleTimeString();
+    if (el) el.textContent = new Date().toLocaleTimeString('ru-RU');
   }
 
   function showError(container, msg) {
@@ -120,13 +137,13 @@ const App = (() => {
 
   function formatBps(bps) {
     if (!bps) return '—';
-    if (bps >= 1e9) return `${(bps / 1e9).toFixed(1)} Gbps`;
-    if (bps >= 1e6) return `${(bps / 1e6).toFixed(0)} Mbps`;
-    return `${bps} bps`;
+    if (bps >= 1e9) return `${(bps / 1e9).toFixed(1)} Гбит/с`;
+    if (bps >= 1e6) return `${(bps / 1e6).toFixed(0)} Мбит/с`;
+    return `${bps} бит/с`;
   }
 
   return {
-    NAV, ICONS, LOGO_SVG,
+    NAV, ICONS, LOGO_SVG, STATUS_LABELS,
     escapeHtml, formatDate, statusBadge, renderShell, initShell,
     showError, queryParam, formatBps, updateClock,
   };

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard — NetAtlas</title>
+  <title>Панель — NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
   <link rel="stylesheet" href="/css/app.css">
 </head>
@@ -15,19 +15,19 @@
   <script src="/js/topology.js"></script>
   <script src="/js/app.js"></script>
   <script>
-    App.initShell('dashboard', 'Dashboard', async (el) => {
+    App.initShell('dashboard', 'Панель', async (el) => {
       el.innerHTML = `
         <div class="stat-grid" id="dash-stats">
-          <div class="stat-block accent"><div class="stat-value">—</div><div class="stat-label">Devices</div></div>
-          <div class="stat-block"><div class="stat-value">—</div><div class="stat-label">Links</div></div>
-          <div class="stat-block"><div class="stat-value">—</div><div class="stat-label">Prefixes</div></div>
-          <div class="stat-block danger"><div class="stat-value">—</div><div class="stat-label">Alerts</div></div>
+          <div class="stat-block accent"><div class="stat-value">—</div><div class="stat-label">Устройства</div></div>
+          <div class="stat-block"><div class="stat-value">—</div><div class="stat-label">Связи</div></div>
+          <div class="stat-block"><div class="stat-value">—</div><div class="stat-label">Префиксы</div></div>
+          <div class="stat-block danger"><div class="stat-value">—</div><div class="stat-label">Алерты</div></div>
         </div>
 
         <div class="panel panel-map">
           <div class="panel-header">
-            <h3>Live Network Map</h3>
-            <a href="/pages/topology.html" class="btn-na btn-na-secondary">Full screen</a>
+            <h3>Живая карта сети</h3>
+            <a href="/pages/topology.html" class="btn-na btn-na-secondary">На весь экран</a>
           </div>
           <div class="panel-body">
             <div id="dash-map" class="dash-map-container"></div>
@@ -35,7 +35,7 @@
         </div>
 
         <div class="health-strip" id="health-strip">
-          <span class="health-item">Loading health status…</span>
+          <span class="health-item">Загрузка состояния…</span>
         </div>
       `;
 
@@ -66,14 +66,16 @@
         const events = obsStatus?.events_stored ?? 0;
         const syslogPort = obsStatus?.syslog?.udp_port;
 
+        const problemWord = problems === 1 ? 'проблема триггера' : (problems >= 2 && problems <= 4 ? 'проблемы триггеров' : 'проблем триггеров');
+
         strip.innerHTML = `
           <span class="health-item ${problems > 0 ? 'health-problems' : 'health-ok'}">
-            <strong>${problems}</strong> trigger problem${problems === 1 ? '' : 's'}
+            <strong>${problems}</strong> ${problemWord}
           </span>
-          <span class="health-item"><strong>${events}</strong> syslog events stored</span>
+          <span class="health-item"><strong>${events}</strong> событий syslog</span>
           ${syslogPort ? `<span class="health-item">Syslog UDP <span class="mono">:${App.escapeHtml(String(syslogPort))}</span></span>` : ''}
-          <span class="health-item"><strong>${(graph.nodes || []).length}</strong> nodes mapped</span>
-          <a href="/pages/observability.html" class="btn-na btn-na-secondary btn-sm">Observability</a>
+          <span class="health-item"><strong>${(graph.nodes || []).length}</strong> узлов на карте</span>
+          <a href="/pages/observability.html" class="btn-na btn-na-secondary btn-sm">Наблюдаемость</a>
         `;
       } catch (err) {
         const strip = el.querySelector('#health-strip');

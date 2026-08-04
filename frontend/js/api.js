@@ -17,7 +17,7 @@ const Api = (() => {
   async function refreshTokens() {
     if (refreshing) return refreshing;
     const rt = getRefreshToken();
-    if (!rt) throw new Error('No refresh token');
+    if (!rt) throw new Error('Нет токена обновления');
 
     refreshing = fetch(`${API_BASE}/auth/refresh`, {
       method: 'POST',
@@ -25,7 +25,7 @@ const Api = (() => {
       body: JSON.stringify({ refresh_token: rt }),
     }).then(async (res) => {
       refreshing = null;
-      if (!res.ok) throw new Error('Refresh failed');
+      if (!res.ok) throw new Error('Не удалось обновить сессию');
       const data = await res.json();
       sessionStorage.setItem('access_token', data.access_token);
       sessionStorage.setItem('refresh_token', data.refresh_token);
@@ -55,7 +55,7 @@ const Api = (() => {
       } catch {
         sessionStorage.clear();
         window.location.href = '/';
-        throw new Error('Session expired');
+        throw new Error('Сессия истекла');
       }
     }
 

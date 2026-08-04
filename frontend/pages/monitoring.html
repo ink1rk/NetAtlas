@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Monitoring — NetAtlas</title>
+  <title>Мониторинг — NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
   <link rel="stylesheet" href="/css/app.css">
 </head>
@@ -15,31 +15,31 @@
   <script src="/js/charts.js"></script>
   <script src="/js/app.js"></script>
   <script>
-    App.initShell('monitoring', 'System Monitoring', async (el) => {
+    App.initShell('monitoring', 'Системный мониторинг', async (el) => {
       el.innerHTML = `
         <div class="stat-grid" id="sys-stats">
-          <div class="stat-block accent"><div class="stat-value" id="health-status">—</div><div class="stat-label">API Health</div></div>
-          <div class="stat-block"><div class="stat-value" id="ready-status">—</div><div class="stat-label">Readiness</div></div>
-          <div class="stat-block"><div class="stat-value" id="api-version">—</div><div class="stat-label">Version</div></div>
-          <div class="stat-block warning"><div class="stat-value" id="device-up">—</div><div class="stat-label">Devices Up</div></div>
+          <div class="stat-block accent"><div class="stat-value" id="health-status">—</div><div class="stat-label">Здоровье API</div></div>
+          <div class="stat-block"><div class="stat-value" id="ready-status">—</div><div class="stat-label">Готовность</div></div>
+          <div class="stat-block"><div class="stat-value" id="api-version">—</div><div class="stat-label">Версия</div></div>
+          <div class="stat-block warning"><div class="stat-value" id="device-up">—</div><div class="stat-label">Устройства в сети</div></div>
         </div>
         <div class="row g-3">
           <div class="col-lg-6">
             <div class="panel">
-              <div class="panel-header"><h3>Device Health Overview</h3></div>
+              <div class="panel-header"><h3>Состояние устройств</h3></div>
               <div class="panel-body"><div class="chart-wrap tall"><canvas id="health-chart"></canvas></div></div>
             </div>
           </div>
           <div class="col-lg-6">
             <div class="panel">
-              <div class="panel-header"><h3>Discovery Job Activity</h3></div>
+              <div class="panel-header"><h3>Активность заданий обнаружения</h3></div>
               <div class="panel-body"><div class="chart-wrap tall"><canvas id="jobs-chart"></canvas></div></div>
             </div>
           </div>
         </div>
         <div class="panel mt-3">
-          <div class="panel-header"><h3>Device Metrics</h3></div>
-          <div class="panel-body p-0" id="metrics-table"><p class="empty-state">Loading…</p></div>
+          <div class="panel-header"><h3>Метрики устройств</h3></div>
+          <div class="panel-body p-0" id="metrics-table"><p class="empty-state">Загрузка…</p></div>
         </div>
       `;
 
@@ -52,9 +52,9 @@
         ]);
 
         document.getElementById('health-status').innerHTML = health.status === 'ok'
-          ? '<span class="badge-status up">OK</span>' : '<span class="badge-status down">Error</span>';
+          ? '<span class="badge-status up">OK</span>' : '<span class="badge-status down">Ошибка</span>';
         document.getElementById('ready-status').innerHTML = ready
-          ? '<span class="badge-status up">Ready</span>' : '<span class="badge-status down">Not Ready</span>';
+          ? '<span class="badge-status up">Готов</span>' : '<span class="badge-status down">Не готов</span>';
         document.getElementById('api-version').textContent = health.version || '1.0.0';
 
         const upCount = (devices.items || []).filter(d => (d.status || '').toLowerCase() === 'up').length;
@@ -69,18 +69,19 @@
         });
 
         Charts.doughnutChart('health-chart',
-          ['Up', 'Down', 'Unknown'],
+          ['В сети', 'Недоступны', 'Неизвестно'],
           [statusCounts.up, statusCounts.down, statusCounts.unknown],
           [Charts.COLORS.accent, Charts.COLORS.danger, Charts.COLORS.muted]
         );
 
         const jobStatus = {};
         (jobs || []).forEach((j) => {
-          jobStatus[j.status] = (jobStatus[j.status] || 0) + 1;
+          const label = App.STATUS_LABELS[(j.status || '').toLowerCase()] || j.status;
+          jobStatus[label] = (jobStatus[label] || 0) + 1;
         });
         Charts.barChart('jobs-chart',
           Object.keys(jobStatus),
-          [{ label: 'Jobs', data: Object.values(jobStatus), backgroundColor: Charts.COLORS.infoDim, borderColor: Charts.COLORS.info, borderWidth: 1 }],
+          [{ label: 'Задания', data: Object.values(jobStatus), backgroundColor: Charts.COLORS.infoDim, borderColor: Charts.COLORS.info, borderWidth: 1 }],
           { plugins: { legend: { display: false } } }
         );
 
@@ -98,17 +99,17 @@
           .map((r) => r.value);
 
         if (!rows.length) {
-          metricsEl.innerHTML = '<p class="empty-state">No device metrics available.</p>';
+          metricsEl.innerHTML = '<p class="empty-state">Метрики устройств недоступны.</p>';
         } else {
           metricsEl.innerHTML = `<table class="data-table"><thead><tr>
-            <th>Device</th><th>CPU %</th><th>Memory %</th><th>Uptime</th><th>Last Polled</th>
+            <th>Устройство</th><th>CPU %</th><th>Память %</th><th>Аптайм</th><th>Последний опрос</th>
           </tr></thead><tbody>${rows.map(({ device, metrics }) => {
             const latest = metrics.latest || metrics.current || metrics;
             return `<tr>
               <td><a href="/pages/device-detail.html?id=${device.id}">${App.escapeHtml(device.hostname)}</a></td>
               <td class="mono">${latest.cpu_percent ?? latest.cpu ?? '—'}</td>
               <td class="mono">${latest.memory_percent ?? latest.memory ?? '—'}</td>
-              <td class="mono">${latest.uptime_seconds ? Math.floor(latest.uptime_seconds / 86400) + 'd' : '—'}</td>
+              <td class="mono">${latest.uptime_seconds ? Math.floor(latest.uptime_seconds / 86400) + ' дн.' : '—'}</td>
               <td>${App.formatDate(latest.timestamp || latest.polled_at)}</td>
             </tr>`;
           }).join('')}</tbody></table>`;

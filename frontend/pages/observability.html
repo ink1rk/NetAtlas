@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Observability — NetAtlas</title>
+  <title>Наблюдаемость — NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
   <link rel="stylesheet" href="/css/app.css">
 </head>
@@ -13,85 +13,85 @@
   <script src="/js/auth.js"></script>
   <script src="/js/app.js"></script>
   <script>
-    App.initShell('observability', 'Observability', async (el) => {
+    App.initShell('observability', 'Наблюдаемость', async (el) => {
       el.innerHTML = `
         <div class="page-intro">
-          <p class="subtitle">Onboard syslog · Zabbix-like triggers · SMTP alerts · partial SIEM</p>
+          <p class="subtitle">Локальный syslog · триггеры · SMTP-алерты · частичный SIEM</p>
           <div class="pill-row" id="obs-status"></div>
         </div>
 
         <div class="panel mt-3">
-          <div class="panel-header"><h3>Triggers</h3></div>
+          <div class="panel-header"><h3>Триггеры</h3></div>
           <div class="panel-body table-wrap">
             <table class="table-na">
-              <thead><tr><th>Name</th><th>Kind</th><th>Severity</th><th>Status</th><th>Last value</th><th>Changed</th></tr></thead>
-              <tbody id="triggers-body"><tr><td colspan="6">Loading…</td></tr></tbody>
+              <thead><tr><th>Имя</th><th>Тип</th><th>Критичность</th><th>Статус</th><th>Последнее значение</th><th>Изменён</th></tr></thead>
+              <tbody id="triggers-body"><tr><td colspan="6">Загрузка…</td></tr></tbody>
             </table>
           </div>
         </div>
 
         <div class="panel mt-3">
-          <div class="panel-header"><h3>Recent alerts</h3></div>
+          <div class="panel-header"><h3>Недавние алерты</h3></div>
           <div class="panel-body table-wrap">
             <table class="table-na">
-              <thead><tr><th>Type</th><th>Severity</th><th>Message</th><th>Ack</th><th>Time</th><th></th></tr></thead>
-              <tbody id="alerts-body"><tr><td colspan="6">Loading…</td></tr></tbody>
+              <thead><tr><th>Тип</th><th>Критичность</th><th>Сообщение</th><th>Подтв.</th><th>Время</th><th></th></tr></thead>
+              <tbody id="alerts-body"><tr><td colspan="6">Загрузка…</td></tr></tbody>
             </table>
           </div>
         </div>
 
         <div class="panel mt-3">
           <div class="panel-header">
-            <h3>Syslog / SIEM events</h3>
+            <h3>События Syslog / SIEM</h3>
             <form id="event-filter" class="inline-form">
-              <input class="form-control" id="q" placeholder="Search message">
+              <input class="form-control" id="q" placeholder="Поиск по сообщению">
               <select class="form-select" id="category">
-                <option value="">All categories</option>
+                <option value="">Все категории</option>
                 <option>auth_failure</option>
                 <option>firewall</option>
                 <option>link_down</option>
                 <option>threat</option>
                 <option>syslog</option>
               </select>
-              <button class="btn-na btn-na-secondary" type="submit">Filter</button>
+              <button class="btn-na btn-na-secondary" type="submit">Фильтр</button>
             </form>
           </div>
           <div class="panel-body table-wrap">
             <table class="table-na">
-              <thead><tr><th>Time</th><th>Source</th><th>Sev</th><th>Category</th><th>Message</th></tr></thead>
-              <tbody id="events-body"><tr><td colspan="5">Loading…</td></tr></tbody>
+              <thead><tr><th>Время</th><th>Источник</th><th>Сев.</th><th>Категория</th><th>Сообщение</th></tr></thead>
+              <tbody id="events-body"><tr><td colspan="5">Загрузка…</td></tr></tbody>
             </table>
           </div>
         </div>
 
         <div class="panel mt-3">
-          <div class="panel-header"><h3>SIEM correlation hits</h3></div>
+          <div class="panel-header"><h3>Корреляции SIEM</h3></div>
           <div class="panel-body table-wrap">
             <table class="table-na">
-              <thead><tr><th>Rule</th><th>Title</th><th>Severity</th><th>Source</th><th>Time</th></tr></thead>
-              <tbody id="siem-body"><tr><td colspan="5">Loading…</td></tr></tbody>
+              <thead><tr><th>Правило</th><th>Заголовок</th><th>Критичность</th><th>Источник</th><th>Время</th></tr></thead>
+              <tbody id="siem-body"><tr><td colspan="5">Загрузка…</td></tr></tbody>
             </table>
           </div>
         </div>
       `;
 
       async function loadStatus() {
-        const s = await API.get('/observability/status');
+        const s = await Api.get('/observability/status');
         document.getElementById('obs-status').innerHTML = `
           <span class="pill">syslog :${App.escapeHtml(String(s.syslog.udp_port))}/udp</span>
           ${s.syslog.tls_enabled ? `<span class="pill">syslog-tls :${App.escapeHtml(String(s.syslog.tls_port))}</span>` : ''}
-          <span class="pill ${s.channels?.smtp ? '' : 'pill-dim'}">SMTP ${s.channels?.smtp ? 'on' : 'off'}</span>
-          <span class="pill ${s.channels?.telegram ? '' : 'pill-dim'}">Telegram ${s.channels?.telegram ? 'on' : 'off'}</span>
-          <span class="pill ${s.channels?.element ? '' : 'pill-dim'}">Element ${s.channels?.element ? 'on' : 'off'}</span>
-          <span class="pill">${s.events_stored} events</span>
-          <span class="pill ${s.triggers_in_problem ? 'pill-warn' : ''}">${s.triggers_in_problem} problems</span>
+          <span class="pill ${s.channels?.smtp ? '' : 'pill-dim'}">SMTP ${s.channels?.smtp ? 'вкл' : 'выкл'}</span>
+          <span class="pill ${s.channels?.telegram ? '' : 'pill-dim'}">Telegram ${s.channels?.telegram ? 'вкл' : 'выкл'}</span>
+          <span class="pill ${s.channels?.element ? '' : 'pill-dim'}">Element ${s.channels?.element ? 'вкл' : 'выкл'}</span>
+          <span class="pill">${s.events_stored} событий</span>
+          <span class="pill ${s.triggers_in_problem ? 'pill-warn' : ''}">${s.triggers_in_problem} проблем</span>
         `;
       }
 
       async function loadTriggers() {
-        const rows = await API.get('/observability/triggers');
+        const rows = await Api.get('/observability/triggers');
         const body = document.getElementById('triggers-body');
-        if (!rows.length) { body.innerHTML = '<tr><td colspan="6">No triggers</td></tr>'; return; }
+        if (!rows.length) { body.innerHTML = '<tr><td colspan="6">Триггеров нет</td></tr>'; return; }
         body.innerHTML = rows.map(t => `
           <tr>
             <td>${App.escapeHtml(t.name)}</td>
@@ -105,31 +105,31 @@
       }
 
       async function loadAlerts() {
-        const data = await API.get('/observability/alerts?page_size=30');
+        const data = await Api.get('/observability/alerts?page_size=30');
         const body = document.getElementById('alerts-body');
-        if (!data.items.length) { body.innerHTML = '<tr><td colspan="6">No alerts yet</td></tr>'; return; }
+        if (!data.items.length) { body.innerHTML = '<tr><td colspan="6">Алертов пока нет</td></tr>'; return; }
         body.innerHTML = data.items.map(a => `
           <tr>
             <td>${App.escapeHtml(a.event_type)}</td>
             <td>${App.escapeHtml(a.severity)}</td>
             <td>${App.escapeHtml(a.message)}</td>
-            <td>${a.acknowledged ? 'yes' : 'no'}</td>
+            <td>${a.acknowledged ? 'да' : 'нет'}</td>
             <td>${App.formatDate(a.created_at)}</td>
-            <td>${a.acknowledged ? '' : `<button class="btn-na btn-na-secondary btn-sm" data-ack="${a.id}">Ack</button>`}</td>
+            <td>${a.acknowledged ? '' : `<button class="btn-na btn-na-secondary btn-sm" data-ack="${a.id}">Подтвердить</button>`}</td>
           </tr>
         `).join('');
         body.querySelectorAll('[data-ack]').forEach(btn => {
           btn.addEventListener('click', async () => {
-            await API.post(`/observability/alerts/${btn.dataset.ack}/ack`);
+            await Api.post(`/observability/alerts/${btn.dataset.ack}/ack`);
             loadAlerts();
           });
         });
       }
 
       async function loadEvents(params = '') {
-        const data = await API.get('/observability/events?' + params);
+        const data = await Api.get('/observability/events?' + params);
         const body = document.getElementById('events-body');
-        if (!data.items.length) { body.innerHTML = '<tr><td colspan="5">No events</td></tr>'; return; }
+        if (!data.items.length) { body.innerHTML = '<tr><td colspan="5">Событий нет</td></tr>'; return; }
         body.innerHTML = data.items.map(e => `
           <tr>
             <td>${App.formatDate(e.received_at)}</td>
@@ -142,9 +142,9 @@
       }
 
       async function loadSiem() {
-        const data = await API.get('/observability/siem/hits');
+        const data = await Api.get('/observability/siem/hits');
         const body = document.getElementById('siem-body');
-        if (!data.items.length) { body.innerHTML = '<tr><td colspan="5">No correlation hits</td></tr>'; return; }
+        if (!data.items.length) { body.innerHTML = '<tr><td colspan="5">Корреляций нет</td></tr>'; return; }
         body.innerHTML = data.items.map(h => `
           <tr>
             <td>${App.escapeHtml(h.rule_name)}</td>

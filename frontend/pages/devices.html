@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Devices — NetAtlas</title>
+  <title>Устройства — NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
   <link rel="stylesheet" href="/css/app.css">
 </head>
@@ -16,18 +16,18 @@
     let page = 1;
     const pageSize = 50;
 
-    App.initShell('devices', 'Device Inventory', (el) => {
+    App.initShell('devices', 'Инвентарь устройств', (el) => {
       el.innerHTML = `
         <div class="panel">
           <div class="panel-header">
-            <h3>All Devices</h3>
+            <h3>Все устройства</h3>
             <div class="d-flex gap-2">
-              <input type="text" id="filter-q" class="form-control form-control-sm" placeholder="Search hostname…" style="width:200px">
-              <input type="text" id="filter-vendor" class="form-control form-control-sm" placeholder="Vendor" style="width:120px">
-              <button class="btn-na" id="btn-filter">Filter</button>
+              <input type="text" id="filter-q" class="form-control form-control-sm" placeholder="Поиск по имени…" style="width:200px">
+              <input type="text" id="filter-vendor" class="form-control form-control-sm" placeholder="Вендор" style="width:120px">
+              <button class="btn-na" id="btn-filter">Фильтр</button>
             </div>
           </div>
-          <div id="devices-table" class="panel-body p-0"><p class="empty-state">Loading…</p></div>
+          <div id="devices-table" class="panel-body p-0"><p class="empty-state">Загрузка…</p></div>
         </div>
       `;
 
@@ -47,15 +47,15 @@
         });
 
         if (!data.items?.length) {
-          container.innerHTML = '<p class="empty-state">No devices match your filters.</p>';
+          container.innerHTML = '<p class="empty-state">Нет устройств по заданным фильтрам.</p>';
           return;
         }
 
         const totalPages = Math.ceil((data.total || 0) / pageSize);
         container.innerHTML = `
           <table class="data-table"><thead><tr>
-            <th>Hostname</th><th>Vendor</th><th>Model</th><th>Platform</th>
-            <th>Management IP</th><th>OS Version</th><th>Status</th><th>Last Seen</th>
+            <th>Имя узла</th><th>Вендор</th><th>Модель</th><th>Платформа</th>
+            <th>Management IP</th><th>Версия ОС</th><th>Статус</th><th>Последний контакт</th>
           </tr></thead>
           <tbody>${data.items.map(d => `<tr style="cursor:pointer" onclick="location.href='/pages/device-detail.html?id=${d.id}'">
             <td><strong>${App.escapeHtml(d.hostname)}</strong></td>
@@ -68,11 +68,11 @@
             <td>${App.formatDate(d.last_seen_at)}</td>
           </tr>`).join('')}</tbody></table>
           <div class="pagination-bar">
-            <span>${data.total ?? data.items.length} devices</span>
+            <span>${data.total ?? data.items.length} устройств</span>
             <div class="d-flex gap-2">
-              <button class="btn-na" id="prev-page" ${page <= 1 ? 'disabled' : ''}>Previous</button>
-              <span>Page ${page} of ${totalPages || 1}</span>
-              <button class="btn-na" id="next-page" ${page >= totalPages ? 'disabled' : ''}>Next</button>
+              <button class="btn-na" id="prev-page" ${page <= 1 ? 'disabled' : ''}>Назад</button>
+              <span>Стр. ${page} из ${totalPages || 1}</span>
+              <button class="btn-na" id="next-page" ${page >= totalPages ? 'disabled' : ''}>Далее</button>
             </div>
           </div>
         `;

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -17,36 +17,36 @@
   <script>
     let selectedPrefix = null;
 
-    App.initShell('ipam', 'IP Address Management', (el) => {
+    App.initShell('ipam', 'Управление IP-адресами', (el) => {
       el.innerHTML = `
         <div class="row g-3">
           <div class="col-lg-4">
             <div class="panel">
-              <div class="panel-header"><h3>Prefixes</h3></div>
+              <div class="panel-header"><h3>Префиксы</h3></div>
               <div class="panel-body">
                 <form id="prefix-form" class="form-na mb-3">
                   <div class="mb-2">
-                    <label>Prefix (CIDR)</label>
+                    <label>Префикс (CIDR)</label>
                     <input type="text" id="prefix-cidr" class="form-control" placeholder="10.0.0.0/8" required>
                   </div>
                   <div class="mb-2">
-                    <label>Description</label>
-                    <input type="text" id="prefix-desc" class="form-control" placeholder="Corporate LAN">
+                    <label>Описание</label>
+                    <input type="text" id="prefix-desc" class="form-control" placeholder="Корпоративная LAN">
                   </div>
-                  <button type="submit" class="btn-na btn-na-primary">Register</button>
+                  <button type="submit" class="btn-na btn-na-primary">Зарегистрировать</button>
                 </form>
-                <ul class="prefix-tree" id="prefix-list"><li class="empty-state">Loading…</li></ul>
+                <ul class="prefix-tree" id="prefix-list"><li class="empty-state">Загрузка…</li></ul>
               </div>
             </div>
             <div class="panel mt-3">
-              <div class="panel-header"><h3>Utilization</h3></div>
+              <div class="panel-header"><h3>Утилизация</h3></div>
               <div class="panel-body"><div class="chart-wrap"><canvas id="util-chart"></canvas></div></div>
             </div>
           </div>
           <div class="col-lg-8">
             <div class="panel">
-              <div class="panel-header"><h3 id="addr-title">Addresses</h3></div>
-              <div class="panel-body p-0" id="addr-list"><p class="empty-state">Select a prefix to view addresses.</p></div>
+              <div class="panel-header"><h3 id="addr-title">Адреса</h3></div>
+              <div class="panel-body p-0" id="addr-list"><p class="empty-state">Выберите префикс, чтобы увидеть адреса.</p></div>
             </div>
           </div>
         </div>
@@ -72,7 +72,7 @@
       try {
         const prefixes = await Api.listPrefixes();
         if (!prefixes?.length) {
-          el.innerHTML = '<li class="empty-state">No prefixes registered.</li>';
+          el.innerHTML = '<li class="empty-state">Префиксы не зарегистрированы.</li>';
           return;
         }
 
@@ -80,7 +80,7 @@
           <li data-id="${p.id}" class="${selectedPrefix === p.id ? 'selected' : ''}">
             <span class="prefix-addr">${App.escapeHtml(p.prefix)}</span>
             <small class="text-muted d-block">${App.escapeHtml(p.description || '')}</small>
-            <small class="mono text-muted">used ${p.used ?? 0} · free ${p.free ?? 0} · conflicts ${p.conflicts ?? 0}</small>
+            <small class="mono text-muted">занято ${p.used ?? 0} · свободно ${p.free ?? 0} · конфликты ${p.conflicts ?? 0}</small>
           </li>
         `).join('');
 
@@ -107,22 +107,22 @@
 
     async function loadAddresses(prefixId, prefix) {
       const el = document.getElementById('addr-list');
-      document.getElementById('addr-title').textContent = `Addresses — ${prefix?.prefix || ''}`;
-      el.innerHTML = '<p class="empty-state">Loading…</p>';
+      document.getElementById('addr-title').textContent = `Адреса — ${prefix?.prefix || ''}`;
+      el.innerHTML = '<p class="empty-state">Загрузка…</p>';
       try {
         const data = await Api.listAddresses(prefixId);
         if (!data.items?.length) {
-          el.innerHTML = '<p class="empty-state">No addresses in this prefix.</p>';
+          el.innerHTML = '<p class="empty-state">В этом префиксе нет адресов.</p>';
           return;
         }
         el.innerHTML = `<table class="data-table"><thead><tr>
-          <th>Address</th><th>Status</th><th>Hostname</th><th>MAC</th><th>Conflict</th>
+          <th>Адрес</th><th>Статус</th><th>Имя узла</th><th>MAC</th><th>Конфликт</th>
         </tr></thead><tbody>${data.items.map(a => `<tr>
           <td class="mono"><strong>${App.escapeHtml(a.address)}</strong></td>
           <td>${App.statusBadge(a.status)}</td>
           <td>${App.escapeHtml(a.hostname)}</td>
           <td class="mono">${App.escapeHtml(a.mac)}</td>
-          <td>${a.is_conflict ? '<span class="badge-status failed">Yes</span>' : '—'}</td>
+          <td>${a.is_conflict ? '<span class="badge-status failed">Да</span>' : '—'}</td>
         </tr>`).join('')}</tbody></table>`;
       } catch (err) { el.innerHTML = `<div class="alert-na error m-3">${App.escapeHtml(err.message)}</div>`; }
     }
