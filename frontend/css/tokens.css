@@ -1,0 +1,342 @@
+/* NetAtlas Design Tokens — Enterprise Design System
+   Dark default. Light via [data-theme="light"] on <html> or <body>. */
+
+@font-face {
+  font-family: 'IBM Plex Sans';
+  src: url('../static/fonts/IBMPlexSans-Regular.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  src: url('../static/fonts/IBMPlexSans-Medium.woff2') format('woff2');
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  src: url('../static/fonts/IBMPlexSans-SemiBold.woff2') format('woff2');
+  font-weight: 600; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Sans';
+  src: url('../static/fonts/IBMPlexSans-Bold.woff2') format('woff2');
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('../static/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('../static/fonts/JetBrainsMono-Medium.woff2') format('woff2');
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* —— Colors: surfaces —— */
+  --na-bg-canvas: #070B14;
+  --na-bg-primary: #070B14;
+  --na-bg-surface: #0B1220;
+  --na-bg-elevated: #111827;
+  --na-bg-card: #111827;
+  --na-bg-overlay: rgba(7, 11, 20, 0.72);
+  --na-bg-hover: #162033;
+  --na-bg-active: #1A2740;
+  --na-bg-deep: #05080F;
+  --na-bg-base: #0B1220;
+  --na-bg-muted: #0F172A;
+
+  /* —— Colors: borders —— */
+  --na-border: #1E293B;
+  --na-border-subtle: #172033;
+  --na-border-strong: #334155;
+  --na-border-focus: #00B8FF;
+
+  /* —— Colors: text —— */
+  --na-text: #F1F5F9;
+  --na-text-secondary: #CBD5E1;
+  --na-text-muted: #94A3B8;
+  --na-text-dim: #64748B;
+  --na-text-inverse: #070B14;
+
+  /* —— Colors: brand / accent —— */
+  --na-accent: #00B8FF;
+  --na-accent-bright: #33C9FF;
+  --na-accent-dim: #0094CC;
+  --na-accent-hover: #33C9FF;
+  --na-accent-soft: rgba(0, 184, 255, 0.12);
+  --na-accent-muted: rgba(0, 184, 255, 0.12);
+  --na-accent-glow: rgba(0, 184, 255, 0.18);
+
+  /* —— Colors: semantic —— */
+  --na-success: #3DDC97;
+  --na-success-soft: rgba(61, 220, 151, 0.14);
+  --na-warning: #FFB84D;
+  --na-warning-soft: rgba(255, 184, 77, 0.14);
+  --na-danger: #FF4D6D;
+  --na-critical: #FF4D6D;
+  --na-danger-soft: rgba(255, 77, 109, 0.14);
+  --na-info: #38BDF8;
+  --na-info-soft: rgba(56, 189, 248, 0.14);
+  --na-unknown: #64748B;
+
+  /* —— Topology roles —— */
+  --na-role-core: #00B8FF;
+  --na-role-distribution: #8B5CF6;
+  --na-role-access: #10B981;
+  --na-role-firewall: #EF4444;
+  --na-role-server: #3B82F6;
+  --na-role-vm: #A78BFA;
+  --na-role-storage: #F59E0B;
+  --na-role-unknown: #64748B;
+
+  /* —— Typography —— */
+  --na-font-sans: 'IBM Plex Sans', 'Inter', system-ui, sans-serif;
+  --na-font-display: 'IBM Plex Sans', 'Inter', system-ui, sans-serif;
+  --na-font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --na-text-2xs: 0.6875rem;
+  --na-text-xs: 0.75rem;
+  --na-text-sm: 0.8125rem;
+  --na-text-md: 0.875rem;
+  --na-text-base: 0.9375rem;
+  --na-text-lg: 1.0625rem;
+  --na-text-xl: 1.25rem;
+  --na-text-2xl: 1.5rem;
+  --na-text-3xl: 1.875rem;
+
+  --na-fs-2xs: var(--na-text-2xs);
+  --na-fs-xs: var(--na-text-xs);
+  --na-fs-sm: var(--na-text-sm);
+  --na-fs-md: var(--na-text-md);
+  --na-fs-base: var(--na-text-base);
+  --na-fs-lg: var(--na-text-lg);
+  --na-fs-xl: var(--na-text-xl);
+  --na-fs-2xl: var(--na-text-2xl);
+  --na-fs-3xl: var(--na-text-3xl);
+
+  --na-leading-tight: 1.25;
+  --na-leading-normal: 1.5;
+  --na-leading-relaxed: 1.65;
+  --na-lh-tight: var(--na-leading-tight);
+  --na-lh-base: var(--na-leading-normal);
+  --na-lh-relaxed: var(--na-leading-relaxed);
+
+  --na-weight-regular: 400;
+  --na-weight-medium: 500;
+  --na-weight-semibold: 600;
+  --na-weight-bold: 700;
+  --na-fw-regular: 400;
+  --na-fw-medium: 500;
+  --na-fw-semibold: 600;
+  --na-fw-bold: 700;
+
+  --na-tracking-tight: -0.01em;
+  --na-tracking-wide: 0.04em;
+
+  /* —— Spacing (4px base) —— */
+  --na-space-0: 0;
+  --na-space-1: 0.25rem;
+  --na-space-2: 0.5rem;
+  --na-space-3: 0.75rem;
+  --na-space-4: 1rem;
+  --na-space-5: 1.25rem;
+  --na-space-6: 1.5rem;
+  --na-space-8: 2rem;
+  --na-space-10: 2.5rem;
+  --na-space-12: 3rem;
+  --na-space-16: 4rem;
+
+  /* —— Radius —— */
+  --na-radius-xs: 3px;
+  --na-radius-sm: 5px;
+  --na-radius: 7px;
+  --na-radius-md: 9px;
+  --na-radius-lg: 12px;
+  --na-radius-xl: 16px;
+  --na-radius-pill: 999px;
+  --na-radius-full: 999px;
+
+  /* —— Shadows —— */
+  --na-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --na-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --na-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  --na-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --na-shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.55);
+  --na-shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.6);
+  --na-shadow-glow: 0 0 0 1px rgba(0, 184, 255, 0.25), 0 0 24px rgba(0, 184, 255, 0.12);
+  --na-focus-ring: 0 0 0 3px rgba(0, 184, 255, 0.28);
+
+  /* —— Motion —— */
+  --na-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --na-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --na-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --na-ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --na-duration-fast: 120ms;
+  --na-duration: 180ms;
+  --na-duration-base: 180ms;
+  --na-duration-slow: 280ms;
+  --na-transition: 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* —— Z-index —— */
+  --na-z-base: 1;
+  --na-z-sticky: 20;
+  --na-z-dropdown: 40;
+  --na-z-sidebar: 50;
+  --na-z-overlay: 60;
+  --na-z-modal: 70;
+  --na-z-toast: 80;
+  --na-z-command: 90;
+  --na-z-tooltip: 100;
+
+  /* —— Layout / grid —— */
+  --na-sidebar-w: 264px;
+  --na-sidebar-w-collapsed: 72px;
+  --na-topbar-h: 56px;
+  --na-panel-w: 340px;
+  --na-content-max: 1440px;
+  --na-grid-gap: 1rem;
+  --na-container-pad: 1.25rem;
+  --na-dash-map-ratio: 0.7;
+
+  /* —— Breakpoints (reference) —— */
+  --na-bp-sm: 640px;
+  --na-bp-md: 768px;
+  --na-bp-lg: 1024px;
+  --na-bp-xl: 1280px;
+  --na-bp-2xl: 1536px;
+
+  /* —— Controls —— */
+  --na-control-h: 36px;
+  --na-control-h-sm: 30px;
+  --na-control-h-md: 36px;
+  --na-control-h-lg: 42px;
+
+  /* —— Component library aliases (--na-color-*) —— */
+  --na-color-surface-0: var(--na-bg-deep);
+  --na-color-surface-1: var(--na-bg-card);
+  --na-color-surface-2: var(--na-bg-elevated);
+  --na-color-surface-3: var(--na-bg-hover);
+  --na-color-surface-4: var(--na-bg-active);
+  --na-color-canvas: var(--na-bg-canvas);
+  --na-color-overlay: var(--na-bg-overlay);
+  --na-color-border: var(--na-border);
+  --na-color-border-strong: var(--na-border-strong);
+  --na-color-border-focus: var(--na-border-focus);
+  --na-color-text: var(--na-text);
+  --na-color-text-secondary: var(--na-text-secondary);
+  --na-color-text-muted: var(--na-text-muted);
+  --na-color-accent: var(--na-accent);
+  --na-color-accent-hover: var(--na-accent-hover);
+  --na-color-accent-muted: var(--na-accent-muted);
+  --na-color-success: var(--na-success);
+  --na-color-warning: var(--na-warning);
+  --na-color-danger: var(--na-danger);
+  --na-color-info: var(--na-info);
+  --na-color-unknown: var(--na-unknown);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --na-bg-canvas: #F1F5F9;
+  --na-bg-primary: #F1F5F9;
+  --na-bg-surface: #FFFFFF;
+  --na-bg-elevated: #FFFFFF;
+  --na-bg-card: #FFFFFF;
+  --na-bg-overlay: rgba(15, 23, 42, 0.45);
+  --na-bg-hover: #E8EEF6;
+  --na-bg-active: #DDE6F2;
+  --na-bg-deep: #E2E8F0;
+  --na-bg-base: #FFFFFF;
+  --na-bg-muted: #F8FAFC;
+
+  --na-border: #D7E0EA;
+  --na-border-subtle: #E5EDF5;
+  --na-border-strong: #B6C4D4;
+  --na-border-focus: #0284C7;
+
+  --na-text: #0F172A;
+  --na-text-secondary: #334155;
+  --na-text-muted: #64748B;
+  --na-text-dim: #94A3B8;
+  --na-text-inverse: #F8FAFC;
+
+  --na-accent: #0284C7;
+  --na-accent-bright: #0EA5E9;
+  --na-accent-dim: #0369A1;
+  --na-accent-hover: #0EA5E9;
+  --na-accent-soft: rgba(2, 132, 199, 0.1);
+  --na-accent-muted: rgba(2, 132, 199, 0.1);
+  --na-accent-glow: rgba(2, 132, 199, 0.16);
+
+  --na-success: #16A34A;
+  --na-success-soft: rgba(22, 163, 74, 0.12);
+  --na-warning: #D97706;
+  --na-warning-soft: rgba(217, 119, 6, 0.12);
+  --na-danger: #E11D48;
+  --na-critical: #E11D48;
+  --na-danger-soft: rgba(225, 29, 72, 0.12);
+  --na-info: #0284C7;
+  --na-info-soft: rgba(2, 132, 199, 0.1);
+  --na-unknown: #64748B;
+
+  --na-shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --na-shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.08);
+  --na-shadow: 0 10px 30px rgba(15, 23, 42, 0.1);
+  --na-shadow-md: 0 8px 24px rgba(15, 23, 42, 0.1);
+  --na-shadow-lg: 0 20px 50px rgba(15, 23, 42, 0.14);
+  --na-shadow-xl: 0 28px 64px rgba(15, 23, 42, 0.18);
+  --na-shadow-glow: 0 0 0 1px rgba(2, 132, 199, 0.25), 0 0 20px rgba(2, 132, 199, 0.12);
+  --na-focus-ring: 0 0 0 3px rgba(2, 132, 199, 0.28);
+}
+
+/* —— Motion keyframes —— */
+@keyframes na-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes na-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes na-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes na-slide-in-right {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes na-slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes na-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+@keyframes na-pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+@keyframes panel-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --na-duration-fast: 1ms;
+    --na-duration: 1ms;
+    --na-duration-base: 1ms;
+    --na-duration-slow: 1ms;
+    --na-transition: 1ms linear;
+  }
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}
