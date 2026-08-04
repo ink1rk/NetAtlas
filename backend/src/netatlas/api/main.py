@@ -61,6 +61,25 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestIdMiddleware)
     app.add_middleware(LoginRateLimitMiddleware, limit_per_minute=settings.rate_limit_login_per_minute)
 
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request, exc):  # type: ignore[no-untyped-def]
+        from fastapi import HTTPException
+        from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
+        from fastapi.exceptions import RequestValidationError
+
+        if isinstance(exc, HTTPException):
+            return await http_exception_handler(request, exc)
+        if isinstance(exc, RequestValidationError):
+            return await request_validation_exception_handler(request, exc)
+        logger.exception("Unhandled error method=%s path=%s", request.method, request.url.path)
+        return ORJSONResponse(
+            status_code=500,
+            content={
+                "error": {"code": "INTERNAL", "message": str(exc) or "Internal server error"},
+                "detail": str(exc) or "Internal server error",
+            },
+        )
+
     prefix = settings.api_prefix
     app.include_router(system_router, prefix=prefix)
     app.include_router(auth.router, prefix=prefix)

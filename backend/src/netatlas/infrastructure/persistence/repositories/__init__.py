@@ -280,16 +280,25 @@ class SqlAlchemyDiscoverySeedRepository:
 
     async def list(self) -> list[DiscoverySeed]:
         rows = (await self._session.execute(select(DiscoverySeedModel))).scalars().all()
-        return [
-            DiscoverySeed(
-                id=r.id,
-                target=r.target,
-                label=r.label,
-                enabled=r.enabled,
-                credential_profile_ids=[UUID(x) for x in (r.credential_profile_ids or [])],
+        result: list[DiscoverySeed] = []
+        for r in rows:
+            raw_ids = r.credential_profile_ids or []
+            ids: list[UUID] = []
+            for x in raw_ids:
+                try:
+                    ids.append(x if isinstance(x, UUID) else UUID(str(x)))
+                except (ValueError, TypeError):
+                    continue
+            result.append(
+                DiscoverySeed(
+                    id=r.id,
+                    target=r.target,
+                    label=r.label,
+                    enabled=bool(r.enabled),
+                    credential_profile_ids=ids,
+                )
             )
-            for r in rows
-        ]
+        return result
 
     async def add(self, seed: DiscoverySeed) -> DiscoverySeed:
         m = DiscoverySeedModel(
@@ -298,6 +307,7 @@ class SqlAlchemyDiscoverySeedRepository:
             label=seed.label,
             enabled=seed.enabled,
             credential_profile_ids=[str(x) for x in seed.credential_profile_ids],
+            options={},
         )
         self._session.add(m)
         await self._session.flush()
@@ -361,18 +371,24 @@ class SqlAlchemyDiscoveryJobRepository:
         rows = (
             await self._session.execute(select(DiscoveryJobModel).order_by(DiscoveryJobModel.created_at.desc()))
         ).scalars().all()
-        return [
-            DiscoveryJob(
-                id=m.id,
-                status=JobStatus(m.status),
-                started_at=m.started_at,
-                finished_at=m.finished_at,
-                config=dict(m.config or {}),
-                stats=dict(m.stats or {}),
-                error=m.error,
+        result: list[DiscoveryJob] = []
+        for m in rows:
+            try:
+                status = JobStatus(m.status)
+            except ValueError:
+                status = JobStatus.FAILED
+            result.append(
+                DiscoveryJob(
+                    id=m.id,
+                    status=status,
+                    started_at=m.started_at,
+                    finished_at=m.finished_at,
+                    config=dict(m.config or {}),
+                    stats=dict(m.stats or {}),
+                    error=m.error,
+                )
             )
-            for m in rows
-        ]
+        return result
 
     async def update(self, job: DiscoveryJob) -> DiscoveryJob:
         m = await self._session.get(DiscoveryJobModel, job.id)

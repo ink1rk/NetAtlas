@@ -63,7 +63,11 @@ const Api = (() => {
       let msg = `HTTP ${res.status}`;
       try {
         const err = await res.json();
-        msg = err.error?.message || msg;
+        if (typeof err.detail === 'string') msg = err.detail;
+        else if (Array.isArray(err.detail)) {
+          msg = err.detail.map((d) => d.msg || JSON.stringify(d)).join('; ');
+        } else if (err.error?.message) msg = err.error.message;
+        else if (err.message) msg = err.message;
       } catch { /* ignore */ }
       throw new Error(msg);
     }

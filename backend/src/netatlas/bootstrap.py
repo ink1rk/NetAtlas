@@ -7,10 +7,11 @@ from uuid import uuid4
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from netatlas.config import get_settings
+import netatlas.infrastructure.persistence.models  # noqa: F401 — register all ORM tables
 from netatlas.infrastructure.persistence.models import (
     PermissionModel,
     RoleModel,
@@ -24,6 +25,50 @@ from netatlas.infrastructure.security.auth import hash_password
 from netatlas.infrastructure.security.rbac import PERMISSIONS, ROLE_PERMISSIONS
 
 logger = logging.getLogger(__name__)
+
+# create_all does not ALTER existing tables — patch columns added after first install.
+_SCHEMA_PATCHES = (
+    """
+    CREATE TABLE IF NOT EXISTS discovery_seeds (
+        id UUID PRIMARY KEY,
+        target VARCHAR(64) NOT NULL,
+        label VARCHAR(128),
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        credential_profile_ids VARCHAR[] NOT NULL DEFAULT '{}',
+        options JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS discovery_jobs (
+        id UUID PRIMARY KEY,
+        status VARCHAR(32) NOT NULL DEFAULT 'pending',
+        started_at TIMESTAMPTZ,
+        finished_at TIMESTAMPTZ,
+        config JSONB NOT NULL DEFAULT '{}'::jsonb,
+        stats JSONB NOT NULL DEFAULT '{}'::jsonb,
+        error TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    "ALTER TABLE discovery_seeds ADD COLUMN IF NOT EXISTS credential_profile_ids VARCHAR[] NOT NULL DEFAULT '{}'",
+    "ALTER TABLE discovery_seeds ADD COLUMN IF NOT EXISTS options JSONB NOT NULL DEFAULT '{}'::jsonb",
+    "ALTER TABLE discovery_seeds ADD COLUMN IF NOT EXISTS label VARCHAR(128)",
+    "ALTER TABLE discovery_seeds ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE",
+    "ALTER TABLE discovery_jobs ADD COLUMN IF NOT EXISTS config JSONB NOT NULL DEFAULT '{}'::jsonb",
+    "ALTER TABLE discovery_jobs ADD COLUMN IF NOT EXISTS stats JSONB NOT NULL DEFAULT '{}'::jsonb",
+    "ALTER TABLE discovery_jobs ADD COLUMN IF NOT EXISTS error TEXT",
+    "ALTER TABLE discovery_jobs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ",
+    "ALTER TABLE discovery_jobs ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ",
+    "ALTER TABLE discovery_jobs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+)
+
+
+async def _apply_schema_patches(conn) -> None:  # type: ignore[no-untyped-def]
+    for stmt in _SCHEMA_PATCHES:
+        await conn.execute(text(stmt))
+    logger.info("Schema patches applied for discovery tables")
 
 
 def ensure_jwt_keys() -> None:
@@ -63,6 +108,7 @@ async def startup() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await _apply_schema_patches(conn)
 
     async with SessionLocal() as session:
         # Seed permissions
