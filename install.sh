@@ -61,15 +61,51 @@ ensure_user() {
 }
 
 prepare_dirs() {
-  mkdir -p "${NETATLAS_HOME}"/{deploy/certs,data,logs}
-  if [[ ! -d "${NETATLAS_HOME}/.git" ]]; then
-    if [[ -f "${PWD}/docker-compose.yml" ]]; then
-      log "Using local repository copy at ${PWD}"
-      rsync -a --delete --exclude .git "${PWD}/" "${NETATLAS_HOME}/" || cp -a "${PWD}/." "${NETATLAS_HOME}/"
+  # Runtime dirs created AFTER the repo is in place. Creating them first made
+  # /opt/netatlas non-empty and broke `git clone` on first/retry installs.
+  if [[ -d "${NETATLAS_HOME}/.git" ]]; then
+    log "Updating existing repository at ${NETATLAS_HOME}"
+    git -C "${NETATLAS_HOME}" fetch --depth 1 origin "${BRANCH}"
+    git -C "${NETATLAS_HOME}" checkout -B "${BRANCH}" "FETCH_HEAD"
+  elif [[ -f "${PWD}/docker-compose.yml" ]]; then
+    log "Using local repository copy at ${PWD}"
+    mkdir -p "${NETATLAS_HOME}"
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a --exclude .git "${PWD}/" "${NETATLAS_HOME}/"
+    else
+      cp -a "${PWD}/." "${NETATLAS_HOME}/"
+    fi
+  else
+    if [[ -d "${NETATLAS_HOME}" ]]; then
+      if [[ -f "${NETATLAS_HOME}/docker-compose.yml" ]]; then
+        log "Repository files present without .git; continuing"
+      else
+        log "Removing incomplete install directory at ${NETATLAS_HOME}"
+        # Preserve any secrets/data from a partial previous run
+        local preserve
+        preserve="$(mktemp -d /tmp/netatlas-preserve.XXXXXX)"
+        for item in data logs .env deploy/certs; do
+          if [[ -e "${NETATLAS_HOME}/${item}" ]]; then
+            mkdir -p "$(dirname "${preserve}/${item}")"
+            mv "${NETATLAS_HOME}/${item}" "${preserve}/${item}"
+          fi
+        done
+        rm -rf "${NETATLAS_HOME}"
+        git clone --branch "${BRANCH}" --depth 1 "${REPO_URL}" "${NETATLAS_HOME}"
+        for item in data logs .env deploy/certs; do
+          if [[ -e "${preserve}/${item}" ]]; then
+            mkdir -p "$(dirname "${NETATLAS_HOME}/${item}")"
+            rm -rf "${NETATLAS_HOME}/${item}"
+            mv "${preserve}/${item}" "${NETATLAS_HOME}/${item}"
+          fi
+        done
+        rm -rf "${preserve}"
+      fi
     else
       git clone --branch "${BRANCH}" --depth 1 "${REPO_URL}" "${NETATLAS_HOME}"
     fi
   fi
+  mkdir -p "${NETATLAS_HOME}"/{deploy/certs,data,logs}
   chown -R "${NETATLAS_USER}:${NETATLAS_USER}" "${NETATLAS_HOME}"
 }
 
