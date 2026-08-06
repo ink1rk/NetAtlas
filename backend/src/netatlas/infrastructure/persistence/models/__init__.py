@@ -20,7 +20,8 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, CIDR, INET, JSONB, MACADDR, UUID as PGUUID
+from sqlalchemy.dialects.postgresql import ARRAY, CIDR, INET, JSONB, MACADDR
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from netatlas.infrastructure.persistence.models.base import Base, TimestampMixin
@@ -194,6 +195,22 @@ class LinkModel(Base, TimestampMixin):
     vlans: Mapped[list[int] | None] = mapped_column(ARRAY(Integer))
     confidence: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
     last_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Interface-centric topology enrichment (additive)
+    media: Mapped[str] = mapped_column(String(16), nullable=False, default="unknown")
+    link_status: Mapped[str] = mapped_column(String(16), nullable=False, default="unknown")
+    crc_errors: Mapped[int | None] = mapped_column(BigInteger)
+    drops: Mapped[int | None] = mapped_column(BigInteger)
+    rx_utilization_pct: Mapped[float | None] = mapped_column(Float)
+    tx_utilization_pct: Mapped[float | None] = mapped_column(Float)
+    sfp_vendor: Mapped[str | None] = mapped_column(String(128))
+    sfp_model: Mapped[str | None] = mapped_column(String(128))
+    sfp_serial: Mapped[str | None] = mapped_column(String(128))
+    rx_optical_dbm: Mapped[float | None] = mapped_column(Float)
+    tx_optical_dbm: Mapped[float | None] = mapped_column(Float)
+    temperature_c: Mapped[float | None] = mapped_column(Float)
+    voltage: Mapped[float | None] = mapped_column(Float)
+    health: Mapped[str] = mapped_column(String(16), nullable=False, default="unknown")
+    health_reasons: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
 
 
 class LldpNeighborModel(Base):
@@ -559,6 +576,7 @@ class VlanObjectModel(Base, TimestampMixin):
     name: Mapped[str | None] = mapped_column(String(128))
     description: Mapped[str | None] = mapped_column(Text)
     networks: Mapped[list[str] | None] = mapped_column(ARRAY(String), default=list)
+    gateway: Mapped[str | None] = mapped_column(String(64))
     attributes: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
 
 

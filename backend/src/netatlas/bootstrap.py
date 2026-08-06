@@ -10,8 +10,8 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from netatlas.config import get_settings
 import netatlas.infrastructure.persistence.models  # noqa: F401 — register all ORM tables
+from netatlas.config import get_settings
 from netatlas.infrastructure.persistence.models import (
     PermissionModel,
     RoleModel,
@@ -73,6 +73,24 @@ _SCHEMA_PATCHES = (
     "ALTER TABLE devices ADD COLUMN IF NOT EXISTS criticality VARCHAR(32) NOT NULL DEFAULT 'normal'",
     "ALTER TABLE devices ADD COLUMN IF NOT EXISTS description TEXT",
     "CREATE INDEX IF NOT EXISTS ix_devices_network_role ON devices (network_role)",
+    # Interface-centric topology + Link Health (additive)
+    "ALTER TABLE links ADD COLUMN IF NOT EXISTS media VARCHAR(16) NOT NULL DEFAULT 'unknown'",
+    "ALTER TABLE links ADD COLUMN IF NOT EXISTS link_status VARCHAR(16) NOT NULL DEFAULT 'unknown'",
+    "ALTER TABLE links ADD COLUMN IF NOT EXISTS crc_errors BIGINT",
+    "ALTER TABLE links ADD COLUMN IF NOT EXISTS drops BIGINT",
+    "ALTER TABLE links ADD COLUMN IF NOT EXISTS rx_utilization_pct DOUBLE PRECISION",
+    "ALTER TABLE links ADD COLUMN IF NOT EXISTS tx_utilization_pct DOUBLE PRECISION",
+    "ALTER TABLE links ADD COLUMN IF NOT EXISTS sfp_vendor VARCHAR(128)",
+    "ALTER TABLE links ADD COLUMN IF NOT EXISTS sfp_model VARCHAR(128)",
+    "ALTER TABLE links ADD COLUMN IF NOT EXISTS sfp_serial VARCHAR(128)",
+    "ALTER TABLE links ADD COLUMN IF NOT EXISTS rx_optical_dbm DOUBLE PRECISION",
+    "ALTER TABLE links ADD COLUMN IF NOT EXISTS tx_optical_dbm DOUBLE PRECISION",
+    "ALTER TABLE links ADD COLUMN IF NOT EXISTS temperature_c DOUBLE PRECISION",
+    "ALTER TABLE links ADD COLUMN IF NOT EXISTS voltage DOUBLE PRECISION",
+    "ALTER TABLE links ADD COLUMN IF NOT EXISTS health VARCHAR(16) NOT NULL DEFAULT 'unknown'",
+    "ALTER TABLE links ADD COLUMN IF NOT EXISTS health_reasons JSONB NOT NULL DEFAULT '[]'::jsonb",
+    # VLAN Explorer — explicit gateway (in addition to auto-aggregated networks)
+    "ALTER TABLE vlan_objects ADD COLUMN IF NOT EXISTS gateway VARCHAR(64)",
 )
 
 
@@ -210,6 +228,55 @@ async def _seed_default_triggers(session: AsyncSession) -> None:
             "severity": "average",
             "kind": "interface_status",
             "expression": {},
+        },
+        {
+            "name": "Interface CRC errors",
+            "description": "Cumulative ifInErrors above threshold (possible cabling/optics fault)",
+            "severity": "average",
+            "kind": "metric_threshold",
+            "expression": {"metric": "if_in_errors", "op": "gt", "threshold": 1000, "for_minutes": 5},
+        },
+        {
+            "name": "Interface drops",
+            "description": "Cumulative ifOutErrors above threshold (possible congestion/duplex mismatch)",
+            "severity": "average",
+            "kind": "metric_threshold",
+            "expression": {"metric": "if_out_errors", "op": "gt", "threshold": 1000, "for_minutes": 5},
+        },
+        {
+            "name": "High Temperature",
+            "description": "Device temperature above safe operating threshold",
+            "severity": "high",
+            "kind": "metric_threshold",
+            "expression": {"metric": "temperature_c", "op": "gt", "threshold": 65, "for_minutes": 3},
+        },
+        {
+            "name": "Low Toner",
+            "description": "Printer toner level below 10%",
+            "severity": "warning",
+            "kind": "metric_threshold",
+            "expression": {"metric": "toner_percent", "op": "lt", "threshold": 10, "for_minutes": 1},
+        },
+        {
+            "name": "Paper Empty",
+            "description": "Printer reports empty paper tray",
+            "severity": "average",
+            "kind": "metric_threshold",
+            "expression": {"metric": "paper_empty", "op": "eq", "threshold": 1, "for_minutes": 1},
+        },
+        {
+            "name": "Device Offline",
+            "description": "Device has not responded to discovery/metrics polling recently",
+            "severity": "high",
+            "kind": "device_status",
+            "expression": {"for_minutes": 15},
+        },
+        {
+            "name": "Optical RX Low",
+            "description": "SFP receive optical power below safe margin (dBm)",
+            "severity": "average",
+            "kind": "metric_threshold",
+            "expression": {"metric": "rx_optical_dbm", "op": "lt", "threshold": -20, "for_minutes": 3},
         },
         {
             "name": "Auth failure burst",

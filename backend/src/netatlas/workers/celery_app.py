@@ -76,15 +76,24 @@ async def _run_discovery(job_id: UUID) -> dict[str, Any]:
     from netatlas.application.use_cases.discovery import DiscoveryOrchestrator
     from netatlas.infrastructure.collectors.base.registry import build_default_registry
     from netatlas.infrastructure.persistence.repositories import (
+        SqlAlchemyArpRepository,
         SqlAlchemyDeviceRepository,
         SqlAlchemyDiscoveryJobRepository,
         SqlAlchemyDiscoverySeedRepository,
+        SqlAlchemyFdbRepository,
         SqlAlchemyInterfaceRepository,
         SqlAlchemyLinkRepository,
+        SqlAlchemyNeighborRepository,
+        SqlAlchemyRouteRepository,
         SqlAlchemySnapshotRepository,
+        SqlAlchemyVlanRepository,
     )
     from netatlas.infrastructure.persistence.session import SessionLocal
-    from netatlas.infrastructure.security.credential_resolver import bind_device_credentials, load_profiles
+    from netatlas.infrastructure.security.credential_resolver import (
+        bind_device_credentials,
+        load_profile_candidates,
+        load_profiles,
+    )
     from netatlas.infrastructure.security.vault import AesGcmSecretVault
 
     async with SessionLocal() as session:
@@ -95,6 +104,13 @@ async def _run_discovery(job_id: UUID) -> dict[str, Any]:
             for seed in seeds:
                 profile_ids.extend(seed.credential_profile_ids)
             return await load_profiles(session, vault, profile_ids, default_snmp=True)
+
+        async def credential_candidates_loader(seeds: list[Any]) -> list[dict[str, Any]]:
+            """Credential Manager rotation: try each attached SNMP profile in turn."""
+            profile_ids: list[UUID] = []
+            for seed in seeds:
+                profile_ids.extend(seed.credential_profile_ids)
+            return await load_profile_candidates(session, vault, profile_ids, default_snmp=True)
 
         async def on_device(device: Any, seeds: list[Any]) -> None:
             profile_ids: list[UUID] = []
@@ -119,8 +135,14 @@ async def _run_discovery(job_id: UUID) -> dict[str, Any]:
             snapshots=SqlAlchemySnapshotRepository(session),
             registry=build_default_registry(),
             credential_loader=credential_loader,
+            credential_candidates_loader=credential_candidates_loader,
             progress_callback=progress_callback,
             on_device=on_device,
+            neighbors=SqlAlchemyNeighborRepository(session),
+            fdb=SqlAlchemyFdbRepository(session),
+            arp=SqlAlchemyArpRepository(session),
+            vlans=SqlAlchemyVlanRepository(session),
+            routes=SqlAlchemyRouteRepository(session),
         )
         job = await orch.run(job_id)
         await session.commit()
@@ -137,9 +159,16 @@ async def _collect_metrics() -> dict[str, Any]:
     from netatlas.infrastructure.collectors.base.registry import build_default_registry
     from netatlas.infrastructure.collectors.base.snmp_transport import SnmpTransport
     from netatlas.infrastructure.collectors.base.ssh_transport import SshTransport
-    from netatlas.infrastructure.persistence.models import DeviceCredentialModel, DeviceMetricModel, DeviceModel
+    from netatlas.infrastructure.persistence.models import (
+        DeviceCredentialModel,
+        DeviceMetricModel,
+        DeviceModel,
+    )
     from netatlas.infrastructure.persistence.session import SessionLocal
-    from netatlas.infrastructure.security.credential_resolver import load_device_credentials, load_profiles
+    from netatlas.infrastructure.security.credential_resolver import (
+        load_device_credentials,
+        load_profiles,
+    )
     from netatlas.infrastructure.security.vault import AesGcmSecretVault
 
     snmp = SnmpTransport()

@@ -76,6 +76,23 @@ class Link:
     vlans: list[int]
     confidence: float
     last_confirmed_at: datetime | None = None
+    # Interface-centric enrichment (additive — populated best-effort at discovery time)
+    media: str = "unknown"  # fiber | copper | unknown
+    link_status: str = "unknown"  # up | down | degraded | unknown
+    crc_errors: int | None = None
+    drops: int | None = None
+    rx_utilization_pct: float | None = None
+    tx_utilization_pct: float | None = None
+    sfp_vendor: str | None = None
+    sfp_model: str | None = None
+    sfp_serial: str | None = None
+    rx_optical_dbm: float | None = None
+    tx_optical_dbm: float | None = None
+    temperature_c: float | None = None
+    voltage: float | None = None
+    # Link Health (computed lazily by LinkHealthScorer, cached here at read-time)
+    health: str = "unknown"  # healthy | warning | critical | unknown
+    health_reasons: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
