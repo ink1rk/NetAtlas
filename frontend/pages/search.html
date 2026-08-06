@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=mon1">
+  <link rel="stylesheet" href="/css/app.css?v=ent1">
   <script>
     try {
       var t = localStorage.getItem('netatlas_theme');
@@ -21,11 +21,11 @@
 </head>
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-  <script src="/js/i18n.js?v=mon1"></script>
-  <script src="/js/api.js?v=mon1"></script>
-  <script src="/js/auth.js?v=mon1"></script>
-  <script src="/js/ui.js?v=mon1"></script>
-  <script src="/js/app.js?v=mon1"></script>
+  <script src="/js/i18n.js?v=ent1"></script>
+  <script src="/js/api.js?v=ent1"></script>
+  <script src="/js/auth.js?v=ent1"></script>
+  <script src="/js/ui.js?v=ent1"></script>
+  <script src="/js/app.js?v=ent1"></script>
   <script>
     let activeTab = 'all';
     let lastData = null;
@@ -50,6 +50,7 @@
           <button class="tab-btn" data-tab="devices">${I18n.t('nav.devices')}</button>
           <button class="tab-btn" data-tab="interfaces">${I18n.t('device.tab_ifaces')}</button>
           <button class="tab-btn" data-tab="addresses">${I18n.t('ipam.addresses')}</button>
+          <button class="tab-btn" data-tab="vlans">${I18n.t('ws.vlans')}</button>
         </div>
         <div id="search-results"><p class="empty-state">${I18n.t('search.hint')}</p></div>
       `;
@@ -139,7 +140,7 @@
           Ui.pushRecent('search', q);
           renderRecent();
         }
-        const total = (data.devices || []).length + (data.interfaces || []).length + (data.addresses || []).length;
+        const total = (data.devices || []).length + (data.interfaces || []).length + (data.addresses || []).length + (data.vlans || []).length;
         document.getElementById('result-tabs').hidden = total === 0;
         renderResults(q, data);
       } catch (err) {
@@ -153,10 +154,12 @@
       const devices = data.devices || [];
       const interfaces = data.interfaces || [];
       const addresses = data.addresses || [];
+      const vlans = data.vlans || [];
       const showDevices = activeTab === 'all' || activeTab === 'devices';
       const showIfaces = activeTab === 'all' || activeTab === 'interfaces';
       const showAddrs = activeTab === 'all' || activeTab === 'addresses';
-      const total = devices.length + interfaces.length + addresses.length;
+      const showVlans = activeTab === 'all' || activeTab === 'vlans';
+      const total = devices.length + interfaces.length + addresses.length + vlans.length;
       if (!total) {
         el.innerHTML = `<p class="empty-state">${I18n.t('search.no_results', { q: App.escapeHtml(q) })}</p>`;
         return;
@@ -180,6 +183,12 @@
             <div class="mono"><strong>${Ui.highlight(a.address, q)}</strong> ${Ui.highlight(a.hostname || '', q)}</div>
             <span class="text-muted">${App.statusBadge(a.status)} ${a.is_conflict ? '· ' + I18n.t('search.conflict') : ''}</span>
           </div>`).join('')}
+        </div></div>` : ''}
+        ${showVlans && vlans.length ? `<div class="search-hit-group panel mb-3"><div class="panel-header"><h3>${I18n.t('ws.vlans')} (${vlans.length})</h3></div><div class="panel-body p-0">
+          ${vlans.map(v => `<a class="search-hit d-block text-decoration-none" href="/pages/dashboard.html?ws=vlans&vlan=${v.vlan_id}">
+            <div class="mono"><strong>VLAN ${Ui.highlight(String(v.vlan_id), q)}</strong> ${Ui.highlight(v.name || '', q)}</div>
+            <span class="text-muted">${App.escapeHtml(v.description || '')}</span>
+          </a>`).join('')}
         </div></div>` : ''}
       `;
     }

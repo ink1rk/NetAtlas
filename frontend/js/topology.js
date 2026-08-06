@@ -16,10 +16,12 @@ const Topology = (() => {
     server: '#3B82F6',
     vm: '#8B5CF6',
     storage: '#F59E0B',
+    printer: '#EC4899',
     unknown: '#64748B',
   };
 
   function resolveNodeColor(n) {
+    if (n.device_class === 'printer') return ROLE_COLORS.printer;
     const role = String(n.role || n.network_role || '').toLowerCase();
     if (ROLE_COLORS[role]) return ROLE_COLORS[role];
     const type = String(n.type || '').toLowerCase();
@@ -186,6 +188,32 @@ const Topology = (() => {
         selector: '.highlighted',
         style: { 'border-color': '#00B8FF', 'line-color': '#00B8FF' },
       },
+      // Link Health — overrides base edge coloring when telemetry is available.
+      {
+        selector: 'edge[health = "healthy"]',
+        style: { 'line-color': '#10B981', 'target-arrow-color': '#10B981', 'line-style': 'solid' },
+      },
+      {
+        selector: 'edge[health = "warning"]',
+        style: { 'line-color': '#F59E0B', 'target-arrow-color': '#F59E0B', 'line-style': 'solid', width: 3 },
+      },
+      {
+        selector: 'edge[health = "critical"]',
+        style: { 'line-color': '#EF4444', 'target-arrow-color': '#EF4444', 'line-style': 'solid', width: 3.5 },
+      },
+      // Printer Discovery — distinct shape + amber accent when consumables run low.
+      {
+        selector: 'node.printer-node',
+        style: { shape: 'tag', width: 30, height: 26 },
+      },
+      {
+        selector: 'node.printer-alert',
+        style: { 'border-color': '#F59E0B', 'border-width': 3 },
+      },
+      {
+        selector: 'node.device-unknown',
+        style: { 'border-style': 'dotted' },
+      },
     ];
   }
 
@@ -233,15 +261,21 @@ const Topology = (() => {
         },
       };
     });
-    const edges = (data.edges || []).map((e, i) => ({
-      data: {
-        id: e.id || `e${i}`,
-        source: e.source || e.from,
-        target: e.target || e.to,
-        label: e.label || e.interface || '',
-        ...e,
-      },
-    }));
+    const edges = (data.edges || []).map((e, i) => {
+      const inner = e.data || {};
+      return {
+        data: {
+          id: e.id || `e${i}`,
+          source: e.source || e.from,
+          target: e.target || e.to,
+          label: e.label || e.interface || '',
+          health: inner.health || 'unknown',
+          media: inner.media || 'unknown',
+          link_status: inner.link_status || 'unknown',
+          ...e,
+        },
+      };
+    });
     return [...nodes, ...edges];
   }
 
@@ -503,6 +537,18 @@ const Topology = (() => {
       // Prevent browser menu on canvas when using context actions
       el.addEventListener('contextmenu', (e) => {
         if (options.onNodeContext) e.preventDefault();
+      });
+
+      cy.nodes().forEach((n) => {
+        const nd = n.data();
+        if (nd.device_class === 'printer') {
+          n.addClass('printer-node');
+          const p = nd.printer || {};
+          const toners = [p.black_toner_percent, p.cyan_toner_percent, p.magenta_toner_percent, p.yellow_toner_percent]
+            .filter((v) => typeof v === 'number');
+          if (p.paper_empty || toners.some((v) => v < 10)) n.addClass('printer-alert');
+        }
+        if (nd.auto_classified) n.addClass('device-unknown');
       });
 
       cy.ready(() => {

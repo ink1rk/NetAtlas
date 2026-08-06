@@ -111,6 +111,58 @@ const Noc = (() => {
     if (!silent) emit();
   }
 
+  /** Printer Discovery / Mikrotik Bridge View — additive panels on the device overview. */
+  async function renderInspectorExtras(body, deviceId, d) {
+    const deviceClass = d.attributes?.device_class || d.device_class;
+    const platform = d.platform || d.type;
+    const panel = document.createElement('div');
+    panel.className = 'noc-inspector__extra';
+    if (deviceClass === 'printer') {
+      try {
+        const p = await Api.getDevicePrinter(deviceId);
+        const toner = [
+          ['Black', p.black_toner_percent],
+          ['Cyan', p.cyan_toner_percent],
+          ['Magenta', p.magenta_toner_percent],
+          ['Yellow', p.yellow_toner_percent],
+          ['Waste', p.waste_toner_percent],
+        ].filter(([, v]) => typeof v === 'number');
+        panel.innerHTML = `
+          <div class="noc-filter-group__label" style="margin-top:14px">${I18n.t('printer.title')}</div>
+          <div class="noc-kv">
+            <div class="noc-kv__k">${I18n.t('printer.status')}</div><div class="noc-kv__v">${App.escapeHtml(p.status || 'unknown')}</div>
+            <div class="noc-kv__k">${I18n.t('printer.total_pages')}</div><div class="noc-kv__v mono">${App.escapeHtml(String(p.total_pages ?? '—'))}</div>
+            <div class="noc-kv__k">${I18n.t('printer.paper')}</div><div class="noc-kv__v">${p.paper_empty ? App.escapeHtml(I18n.t('printer.paper_empty')) : App.escapeHtml(I18n.t('printer.paper_ok'))}</div>
+            ${toner.map(([label, v]) => `<div class="noc-kv__k">${App.escapeHtml(label)}</div><div class="noc-kv__v"><span class="na-badge na-badge--${v < 10 ? 'error' : v < 25 ? 'warning' : 'success'}">${Math.round(v)}%</span></div>`).join('')}
+          </div>
+          ${(p.errors || []).length ? `<div class="alert-na warning" style="margin-top:8px">${App.escapeHtml((p.errors || []).join(', '))}</div>` : ''}
+        `;
+        body.appendChild(panel);
+      } catch { /* printer telemetry optional */ }
+      return;
+    }
+    if (String(platform).toLowerCase() === 'mikrotik') {
+      try {
+        const bridge = await Api.getDeviceBridge(deviceId);
+        if (!bridge.supported) return;
+        panel.innerHTML = `
+          <div class="noc-filter-group__label" style="margin-top:14px">${I18n.t('bridge.title')}</div>
+          <div class="na-table-wrap"><table class="na-table">
+            <thead><tr><th>${I18n.t('bridge.port')}</th><th>${I18n.t('bridge.pvid')}</th><th>${I18n.t('bridge.tagged')}</th></tr></thead>
+            <tbody>
+              ${(bridge.ports || []).slice(0, 40).map((port) => {
+                const tagged = (bridge.vlan_table || []).filter((v) => (v.tagged || []).includes(port.interface)).map((v) => v.vlan_id);
+                return `<tr><td class="mono">${App.escapeHtml(port.interface)}</td><td>${App.escapeHtml(String(port.pvid ?? '—'))}</td><td class="mono">${App.escapeHtml(tagged.join(', ') || '—')}</td></tr>`;
+              }).join('')}
+            </tbody>
+          </table></div>
+          ${(bridge.bridges || []).map((br) => `<div class="na-hint">${App.escapeHtml(br.name)} · RSTP: ${App.escapeHtml(br.rstp)} · VLAN filtering: ${br.vlan_filtering ? 'on' : 'off'}</div>`).join('')}
+        `;
+        body.appendChild(panel);
+      } catch { /* bridge data optional */ }
+    }
+  }
+
   function clearSelection() {
     state.selected = null;
     clearFocusMode();
@@ -527,6 +579,8 @@ const Noc = (() => {
               <div class="noc-filter-group__label">${App.escapeHtml(vlan.name || '')}</div>
               <div class="noc-kv">
                 <div class="noc-kv__k">ID</div><div class="noc-kv__v">${vlan.vlan_id}</div>
+                <div class="noc-kv__k">${I18n.t('vlan.gateway')}</div><div class="noc-kv__v mono">${App.escapeHtml(vlan.gateway || '—')}</div>
+                <div class="noc-kv__k">${I18n.t('vlan.prefix')}</div><div class="noc-kv__v mono">${App.escapeHtml(vlan.prefix || '—')}</div>
                 <div class="noc-kv__k">Devices</div><div class="noc-kv__v">${vlan.device_count}</div>
                 <div class="noc-kv__k">Path</div><div class="noc-kv__v">${App.escapeHtml((vlan.topology_path || []).join(' → ') || '—')}</div>
               </div>
@@ -536,6 +590,11 @@ const Noc = (() => {
                   <span class="noc-device-list__meta">${App.escapeHtml(d.role || '')}</span>
                 </button>
               `).join('')}
+              <div class="noc-filter-group__label" style="margin-top:10px">${I18n.t('vlan.tagged_ports')} (${(vlan.tagged_ports || []).length})</div>
+              <div class="na-hint">${(vlan.tagged_ports || []).slice(0, 20).map((p) => App.escapeHtml(p.interface)).join(', ') || '—'}</div>
+              <div class="noc-filter-group__label" style="margin-top:10px">${I18n.t('vlan.untagged_ports')} (${(vlan.untagged_ports || []).length})</div>
+              <div class="na-hint">${(vlan.untagged_ports || []).slice(0, 20).map((p) => App.escapeHtml(p.interface)).join(', ') || '—'}</div>
+              <button type="button" class="na-btn na-btn--secondary na-btn--sm" style="width:100%;margin-top:10px" id="noc-vlan-trace">${I18n.t('noc.ctx.trace')}</button>
             </div>
           `;
           detail.querySelectorAll('[data-id]').forEach((b) => {
@@ -543,6 +602,11 @@ const Noc = (() => {
               selectObject({ type: 'device', id: b.dataset.id, data: { id: b.dataset.id } });
               Topology.fitTo?.(b.dataset.id);
             });
+          });
+          detail.querySelector('#noc-vlan-trace')?.addEventListener('click', () => {
+            const ids = (vlan.devices || []).map((d) => ({ id: d.id }));
+            Topology.highlightPath?.(ids);
+            Ui.toast(I18n.t('noc.trace_done'), 'success');
           });
         });
       });
@@ -736,17 +800,41 @@ const Noc = (() => {
     }
 
     if (sel.type === 'link') {
-      body.innerHTML = `
-        <div class="noc-kv">
-          <div class="noc-kv__k">Source</div><div class="noc-kv__v">${App.escapeHtml(d.source || d.from || '—')}</div>
-          <div class="noc-kv__k">Target</div><div class="noc-kv__v">${App.escapeHtml(d.target || d.to || '—')}</div>
-          <div class="noc-kv__k">Label</div><div class="noc-kv__v">${App.escapeHtml(d.label || d.interface || '—')}</div>
-        </div>
-        <div class="noc-inspector__actions">
-          <button type="button" class="na-btn na-btn--secondary na-btn--sm" data-act="export">${I18n.t('noc.ctx.export')}</button>
-        </div>
-      `;
-      body.querySelector('[data-act="export"]')?.addEventListener('click', () => exportSelection(sel));
+      body.innerHTML = `<div class="na-empty"><div class="na-spinner"></div></div>`;
+      const healthColor = { healthy: 'success', warning: 'warning', critical: 'error', unknown: 'info' };
+      try {
+        const link = await Api.getLink(sel.id);
+        const a = link.a || {};
+        const b = link.b || {};
+        const badge = healthColor[link.health] || 'info';
+        body.innerHTML = `
+          <div class="na-badge na-badge--${badge}" style="margin-bottom:10px">${App.escapeHtml((link.health || 'unknown').toUpperCase())}</div>
+          <div class="na-hint" style="margin-bottom:12px">${(link.health_reasons || []).map((r) => App.escapeHtml(r)).join(' · ') || I18n.t('noc.empty')}</div>
+          <div class="noc-kv">
+            <div class="noc-kv__k">${I18n.t('link.a_side')}</div><div class="noc-kv__v mono">${App.escapeHtml(a.hostname || '—')} · ${App.escapeHtml(a.interface || '—')}</div>
+            <div class="noc-kv__k">${I18n.t('link.b_side')}</div><div class="noc-kv__v mono">${App.escapeHtml(b.hostname || '—')} · ${App.escapeHtml(b.interface || '—')}</div>
+            <div class="noc-kv__k">${I18n.t('link.media')}</div><div class="noc-kv__v">${App.escapeHtml(link.media || 'unknown')}</div>
+            <div class="noc-kv__k">${I18n.t('link.status')}</div><div class="noc-kv__v">${App.statusBadge(link.link_status || 'unknown')}</div>
+            <div class="noc-kv__k">${I18n.t('link.speed')}</div><div class="noc-kv__v mono">${App.formatBps(link.speed_bps)}</div>
+            <div class="noc-kv__k">${I18n.t('link.duplex')}</div><div class="noc-kv__v">${App.escapeHtml(a.duplex || b.duplex || '—')}</div>
+            <div class="noc-kv__k">${I18n.t('link.mtu')}</div><div class="noc-kv__v">${App.escapeHtml(String(a.mtu || b.mtu || '—'))}</div>
+            <div class="noc-kv__k">${I18n.t('link.native_vlan')}</div><div class="noc-kv__v">${App.escapeHtml(String(a.native_vlan ?? '—'))}</div>
+            <div class="noc-kv__k">${I18n.t('link.tagged_vlans')}</div><div class="noc-kv__v">${App.escapeHtml((a.tagged_vlans || []).join(', ') || '—')}</div>
+            <div class="noc-kv__k">LACP</div><div class="noc-kv__v">${link.is_lacp ? App.escapeHtml(link.lacp_key || 'yes') : '—'}</div>
+            <div class="noc-kv__k">${I18n.t('link.discovery_method')}</div><div class="noc-kv__v mono">${App.escapeHtml(link.discovery_method || '—')}</div>
+          </div>
+          <div class="noc-inspector__actions">
+            <button type="button" class="na-btn na-btn--secondary na-btn--sm" data-act="open-a">${I18n.t('noc.ctx.open')} A</button>
+            <button type="button" class="na-btn na-btn--secondary na-btn--sm" data-act="open-b">${I18n.t('noc.ctx.open')} B</button>
+            <button type="button" class="na-btn na-btn--secondary na-btn--sm" data-act="export">${I18n.t('noc.ctx.export')}</button>
+          </div>
+        `;
+        body.querySelector('[data-act="open-a"]')?.addEventListener('click', () => selectObject({ type: 'device', id: a.device_id, data: a }));
+        body.querySelector('[data-act="open-b"]')?.addEventListener('click', () => selectObject({ type: 'device', id: b.device_id, data: b }));
+        body.querySelector('[data-act="export"]')?.addEventListener('click', () => exportSelection(sel));
+      } catch (err) {
+        body.innerHTML = `<div class="alert-na error">${App.escapeHtml(err.message)}</div>`;
+      }
       return;
     }
 
@@ -818,6 +906,7 @@ const Noc = (() => {
       body.querySelector('[data-act="full"]')?.addEventListener('click', () => {
         window.location.href = `/pages/device-detail.html?id=${encodeURIComponent(sel.id)}`;
       });
+      await renderInspectorExtras(body, sel.id, d);
       return;
     }
 
