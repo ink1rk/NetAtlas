@@ -1,5 +1,6 @@
-/* NetAtlas Design Tokens — Enterprise Design System
-   Dark default. Light via [data-theme="light"] on <html> or <body>. */
+/* NetAtlas Design Tokens — Enterprise Design System v2
+   Dark default. Light via [data-theme="light"] on <html> or <body>.
+   Inspired by Cisco Catalyst Center, Aruba Central, Grafana, Linear, Raycast. */
 
 @font-face {
   font-family: 'IBM Plex Sans';
@@ -22,6 +23,21 @@
   font-weight: 700; font-style: normal; font-display: swap;
 }
 @font-face {
+  font-family: 'Inter';
+  src: url('../static/fonts/Inter-Regular.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('../static/fonts/Inter-Medium.woff2') format('woff2');
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('../static/fonts/Inter-SemiBold.woff2') format('woff2');
+  font-weight: 600; font-style: normal; font-display: swap;
+}
+@font-face {
   font-family: 'JetBrains Mono';
   src: url('../static/fonts/JetBrainsMono-Regular.woff2') format('woff2');
   font-weight: 400; font-style: normal; font-display: swap;
@@ -38,71 +54,95 @@
   color-scheme: dark;
 
   /* Sync Bootstrap form vars — prevents dark-on-dark typed text */
-  --bs-body-color: #F1F5F9;
-  --bs-body-bg: #111827;
-  --bs-secondary-color: #94A3B8;
+  --bs-body-color: #F3F6FB;
+  --bs-body-bg: #0A0E17;
+  --bs-secondary-color: #93A1B8;
   --bs-tertiary-color: #64748B;
-  --bs-tertiary-bg: #0B1220;
-  --bs-secondary-bg: #0F172A;
-  --bs-border-color: #1E293B;
-  --bs-emphasis-color: #F8FAFC;
+  --bs-tertiary-bg: #0A0E17;
+  --bs-secondary-bg: #101625;
+  --bs-border-color: #202A3D;
+  --bs-emphasis-color: #FAFBFD;
 
-  /* —— Colors: surfaces —— */
-  --na-bg-canvas: #070B14;
-  --na-bg-primary: #070B14;
-  --na-bg-surface: #0B1220;
-  --na-bg-elevated: #111827;
-  --na-bg-card: #111827;
-  --na-bg-overlay: rgba(7, 11, 20, 0.72);
-  --na-bg-hover: #162033;
-  --na-bg-active: #1A2740;
-  --na-bg-deep: #05080F;
-  --na-bg-base: #0B1220;
-  --na-bg-muted: #0F172A;
+  /* —— Colors: surfaces (deep engineering navy, layered) —— */
+  --na-bg-canvas: #05070C;
+  --na-bg-primary: #05070C;
+  --na-bg-surface: #0A0E17;
+  --na-bg-elevated: #101625;
+  --na-bg-card: #0D1220;
+  --na-bg-overlay: rgba(4, 6, 11, 0.78);
+  --na-bg-hover: #16203499;
+  --na-bg-active: #1B2740;
+  --na-bg-deep: #030509;
+  --na-bg-base: #0A0E17;
+  --na-bg-muted: #0D1220;
+
+  /* Glass surfaces — translucent + blur, used for floating panels/cards */
+  --na-glass-bg: rgba(15, 21, 35, 0.6);
+  --na-glass-bg-strong: rgba(15, 21, 35, 0.82);
+  --na-glass-bg-soft: rgba(15, 21, 35, 0.38);
+  --na-glass-border: rgba(148, 178, 214, 0.14);
+  --na-glass-border-hover: rgba(56, 189, 248, 0.4);
+  --na-glass-blur: 20px;
+  --na-glass-blur-sm: 10px;
+  --na-glass-highlight: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0) 40%);
 
   /* —— Colors: borders —— */
-  --na-border: #1E293B;
-  --na-border-subtle: #172033;
-  --na-border-strong: #334155;
-  --na-border-focus: #00B8FF;
+  --na-border: #1C2536;
+  --na-border-subtle: #151C2B;
+  --na-border-strong: #2C3A52;
+  --na-border-focus: #38BDF8;
 
   /* —— Colors: text —— */
-  --na-text: #F1F5F9;
-  --na-text-secondary: #CBD5E1;
-  --na-text-muted: #94A3B8;
-  --na-text-dim: #64748B;
-  --na-text-inverse: #070B14;
+  --na-text: #F3F6FB;
+  --na-text-secondary: #C4CEDE;
+  --na-text-muted: #8B99B0;
+  --na-text-dim: #5B6C87;
+  --na-text-inverse: #05070C;
 
   /* —— Colors: brand / accent —— */
-  --na-accent: #00B8FF;
-  --na-accent-bright: #33C9FF;
-  --na-accent-dim: #0094CC;
-  --na-accent-hover: #33C9FF;
-  --na-accent-soft: rgba(0, 184, 255, 0.12);
-  --na-accent-muted: rgba(0, 184, 255, 0.12);
-  --na-accent-glow: rgba(0, 184, 255, 0.18);
+  --na-accent: #29B6FF;
+  --na-accent-bright: #6BDBFF;
+  --na-accent-dim: #0C86D6;
+  --na-accent-hover: #56C8FF;
+  --na-accent-soft: rgba(41, 182, 255, 0.13);
+  --na-accent-muted: rgba(41, 182, 255, 0.13);
+  --na-accent-glow: rgba(41, 182, 255, 0.22);
+  --na-accent-2: #7C6CFF;
+  --na-accent-2-soft: rgba(124, 108, 255, 0.14);
 
-  /* —— Colors: semantic —— */
-  --na-success: #3DDC97;
-  --na-success-soft: rgba(61, 220, 151, 0.14);
-  --na-warning: #FFB84D;
-  --na-warning-soft: rgba(255, 184, 77, 0.14);
-  --na-danger: #FF4D6D;
-  --na-critical: #FF4D6D;
-  --na-danger-soft: rgba(255, 77, 109, 0.14);
+  /* —— Colors: semantic (clear, non-acid) —— */
+  --na-success: #34D399;
+  --na-success-bright: #5EEAB8;
+  --na-success-soft: rgba(52, 211, 153, 0.13);
+  --na-warning: #FBB03B;
+  --na-warning-bright: #FFC966;
+  --na-warning-soft: rgba(251, 176, 59, 0.14);
+  --na-danger: #FB5B78;
+  --na-critical: #FB5B78;
+  --na-danger-bright: #FF8399;
+  --na-danger-soft: rgba(251, 91, 120, 0.14);
   --na-info: #38BDF8;
-  --na-info-soft: rgba(56, 189, 248, 0.14);
-  --na-unknown: #64748B;
+  --na-info-soft: rgba(56, 189, 248, 0.13);
+  --na-unknown: #5B6C87;
+  --na-unknown-soft: rgba(91, 108, 135, 0.16);
 
   /* —— Topology roles —— */
-  --na-role-core: #00B8FF;
-  --na-role-distribution: #8B5CF6;
-  --na-role-access: #10B981;
-  --na-role-firewall: #EF4444;
-  --na-role-server: #3B82F6;
-  --na-role-vm: #A78BFA;
-  --na-role-storage: #F59E0B;
-  --na-role-unknown: #64748B;
+  --na-role-core: #29B6FF;
+  --na-role-distribution: #8B7CFF;
+  --na-role-access: #34D399;
+  --na-role-firewall: #FB5B78;
+  --na-role-server: #4C9AFF;
+  --na-role-vm: #B69CFF;
+  --na-role-storage: #FBB03B;
+  --na-role-unknown: #5B6C87;
+
+  /* —— Card-identity accents (metric / health / event / device / interface / link) —— */
+  --na-card-metric: #29B6FF;
+  --na-card-health: #34D399;
+  --na-card-event: #FBB03B;
+  --na-card-device: #4C9AFF;
+  --na-card-interface: #8B7CFF;
+  --na-card-link: #37D6C4;
 
   /* —— Typography —— */
   --na-font-sans: 'IBM Plex Sans', 'Inter', system-ui, sans-serif;
@@ -112,12 +152,14 @@
   --na-text-2xs: 0.6875rem;
   --na-text-xs: 0.75rem;
   --na-text-sm: 0.8125rem;
-  --na-text-md: 0.875rem;
-  --na-text-base: 0.9375rem;
+  --na-text-md: 0.9rem;
+  --na-text-base: 0.95rem;
   --na-text-lg: 1.0625rem;
-  --na-text-xl: 1.25rem;
-  --na-text-2xl: 1.5rem;
-  --na-text-3xl: 1.875rem;
+  --na-text-xl: 1.3125rem;
+  --na-text-2xl: 1.625rem;
+  --na-text-3xl: 2rem;
+  --na-text-4xl: 2.5rem;
+  --na-text-5xl: 3.25rem;
 
   --na-fs-2xs: var(--na-text-2xs);
   --na-fs-xs: var(--na-text-xs);
@@ -129,7 +171,7 @@
   --na-fs-2xl: var(--na-text-2xl);
   --na-fs-3xl: var(--na-text-3xl);
 
-  --na-leading-tight: 1.25;
+  --na-leading-tight: 1.2;
   --na-leading-normal: 1.5;
   --na-leading-relaxed: 1.65;
   --na-lh-tight: var(--na-leading-tight);
@@ -145,7 +187,7 @@
   --na-fw-semibold: 600;
   --na-fw-bold: 700;
 
-  --na-tracking-tight: -0.01em;
+  --na-tracking-tight: -0.015em;
   --na-tracking-wide: 0.04em;
 
   /* —— Spacing (4px base) —— */
@@ -162,24 +204,32 @@
   --na-space-16: 4rem;
 
   /* —— Radius —— */
-  --na-radius-xs: 3px;
-  --na-radius-sm: 5px;
-  --na-radius: 7px;
-  --na-radius-md: 9px;
-  --na-radius-lg: 12px;
-  --na-radius-xl: 16px;
+  --na-radius-xs: 4px;
+  --na-radius-sm: 6px;
+  --na-radius: 8px;
+  --na-radius-md: 10px;
+  --na-radius-lg: 14px;
+  --na-radius-xl: 18px;
   --na-radius-pill: 999px;
   --na-radius-full: 999px;
 
-  /* —— Shadows —— */
-  --na-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --na-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
-  --na-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
-  --na-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
-  --na-shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.55);
-  --na-shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.6);
-  --na-shadow-glow: 0 0 0 1px rgba(0, 184, 255, 0.25), 0 0 24px rgba(0, 184, 255, 0.12);
-  --na-focus-ring: 0 0 0 3px rgba(0, 184, 255, 0.28);
+  /* —— Shadows (layered, soft) —— */
+  --na-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --na-shadow-sm: 0 2px 10px -2px rgba(0, 0, 0, 0.45);
+  --na-shadow: 0 10px 32px -6px rgba(0, 0, 0, 0.5);
+  --na-shadow-md: 0 12px 28px -6px rgba(0, 0, 0, 0.48), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --na-shadow-lg: 0 22px 54px -12px rgba(0, 0, 0, 0.6), 0 4px 16px rgba(0, 0, 0, 0.35);
+  --na-shadow-xl: 0 32px 80px -16px rgba(0, 0, 0, 0.68);
+  --na-shadow-glow: 0 0 0 1px rgba(41, 182, 255, 0.28), 0 0 28px rgba(41, 182, 255, 0.16);
+  --na-shadow-glow-success: 0 0 0 1px rgba(52, 211, 153, 0.3), 0 0 24px rgba(52, 211, 153, 0.14);
+  --na-shadow-glow-danger: 0 0 0 1px rgba(251, 91, 120, 0.32), 0 0 24px rgba(251, 91, 120, 0.16);
+  --na-focus-ring: 0 0 0 3px rgba(41, 182, 255, 0.3);
+
+  /* —— Engineering grid canvas background —— */
+  --na-grid-line: rgba(148, 178, 214, 0.05);
+  --na-grid-line-strong: rgba(148, 178, 214, 0.08);
+  --na-grid-size: 28px;
+  --na-grid-dot: rgba(148, 178, 214, 0.14);
 
   /* —— Motion —— */
   --na-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -204,11 +254,11 @@
   --na-z-tooltip: 100;
 
   /* —— Layout / grid —— */
-  --na-sidebar-w: 264px;
-  --na-sidebar-w-collapsed: 72px;
-  --na-topbar-h: 56px;
+  --na-sidebar-w: 248px;
+  --na-sidebar-w-collapsed: 68px;
+  --na-topbar-h: 60px;
   --na-panel-w: 340px;
-  --na-content-max: 1440px;
+  --na-content-max: 1520px;
   --na-grid-gap: 1rem;
   --na-container-pad: 1.25rem;
   --na-dash-map-ratio: 0.7;
@@ -224,7 +274,7 @@
   --na-control-h: 36px;
   --na-control-h-sm: 30px;
   --na-control-h-md: 36px;
-  --na-control-h-lg: 42px;
+  --na-control-h-lg: 44px;
 
   /* —— Component library aliases (--na-color-*) —— */
   --na-color-surface-0: var(--na-bg-deep);
@@ -254,34 +304,41 @@
 [data-bs-theme="light"] {
   color-scheme: light;
 
-  --bs-body-color: #0F172A;
+  --bs-body-color: #101827;
   --bs-body-bg: #FFFFFF;
-  --bs-secondary-color: #64748B;
-  --bs-tertiary-color: #94A3B8;
-  --bs-tertiary-bg: #F8FAFC;
-  --bs-secondary-bg: #F1F5F9;
-  --bs-border-color: #E2E8F0;
-  --bs-emphasis-color: #020617;
+  --bs-secondary-color: #5B6C87;
+  --bs-tertiary-color: #8B99B0;
+  --bs-tertiary-bg: #F6F8FB;
+  --bs-secondary-bg: #EEF2F7;
+  --bs-border-color: #DFE6EF;
+  --bs-emphasis-color: #05070C;
 
-  --na-bg-canvas: #F1F5F9;
-  --na-bg-primary: #F1F5F9;
+  --na-bg-canvas: #F3F6FB;
+  --na-bg-primary: #F3F6FB;
   --na-bg-surface: #FFFFFF;
   --na-bg-elevated: #FFFFFF;
   --na-bg-card: #FFFFFF;
-  --na-bg-overlay: rgba(15, 23, 42, 0.45);
-  --na-bg-hover: #E8EEF6;
-  --na-bg-active: #DDE6F2;
-  --na-bg-deep: #E2E8F0;
+  --na-bg-overlay: rgba(16, 24, 39, 0.45);
+  --na-bg-hover: #EAF1F9;
+  --na-bg-active: #DEE9F5;
+  --na-bg-deep: #E7ECF3;
   --na-bg-base: #FFFFFF;
-  --na-bg-muted: #F8FAFC;
+  --na-bg-muted: #F6F8FB;
 
-  --na-border: #D7E0EA;
-  --na-border-subtle: #E5EDF5;
-  --na-border-strong: #B6C4D4;
+  --na-glass-bg: rgba(255, 255, 255, 0.68);
+  --na-glass-bg-strong: rgba(255, 255, 255, 0.86);
+  --na-glass-bg-soft: rgba(255, 255, 255, 0.45);
+  --na-glass-border: rgba(16, 24, 39, 0.08);
+  --na-glass-border-hover: rgba(2, 132, 199, 0.35);
+  --na-glass-highlight: linear-gradient(180deg, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0) 40%);
+
+  --na-border: #E1E8F0;
+  --na-border-subtle: #EBF0F6;
+  --na-border-strong: #C2CEDC;
   --na-border-focus: #0284C7;
 
-  --na-text: #0F172A;
-  --na-text-secondary: #334155;
+  --na-text: #0E1626;
+  --na-text-secondary: #34445E;
   --na-text-muted: #64748B;
   --na-text-dim: #94A3B8;
   --na-text-inverse: #F8FAFC;
@@ -293,26 +350,46 @@
   --na-accent-soft: rgba(2, 132, 199, 0.1);
   --na-accent-muted: rgba(2, 132, 199, 0.1);
   --na-accent-glow: rgba(2, 132, 199, 0.16);
+  --na-accent-2: #6D5AE0;
+  --na-accent-2-soft: rgba(109, 90, 224, 0.1);
 
-  --na-success: #16A34A;
-  --na-success-soft: rgba(22, 163, 74, 0.12);
-  --na-warning: #D97706;
-  --na-warning-soft: rgba(217, 119, 6, 0.12);
-  --na-danger: #E11D48;
-  --na-critical: #E11D48;
-  --na-danger-soft: rgba(225, 29, 72, 0.12);
+  --na-success: #159862;
+  --na-success-bright: #1DB37A;
+  --na-success-soft: rgba(21, 152, 98, 0.12);
+  --na-warning: #C2760A;
+  --na-warning-bright: #DB8B12;
+  --na-warning-soft: rgba(194, 118, 10, 0.12);
+  --na-danger: #DB2C5C;
+  --na-critical: #DB2C5C;
+  --na-danger-bright: #F0447A;
+  --na-danger-soft: rgba(219, 44, 92, 0.12);
   --na-info: #0284C7;
   --na-info-soft: rgba(2, 132, 199, 0.1);
   --na-unknown: #64748B;
+  --na-unknown-soft: rgba(100, 116, 139, 0.12);
+
+  --na-card-metric: #0284C7;
+  --na-card-health: #159862;
+  --na-card-event: #C2760A;
+  --na-card-device: #2563EB;
+  --na-card-interface: #6D5AE0;
+  --na-card-link: #0E9B8B;
+
+  --na-grid-line: rgba(16, 24, 39, 0.045);
+  --na-grid-line-strong: rgba(16, 24, 39, 0.08);
+  --na-grid-dot: rgba(16, 24, 39, 0.1);
 
   --na-shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.06);
-  --na-shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.08);
+  --na-shadow-sm: 0 2px 10px -2px rgba(15, 23, 42, 0.08);
   --na-shadow: 0 10px 30px rgba(15, 23, 42, 0.1);
-  --na-shadow-md: 0 8px 24px rgba(15, 23, 42, 0.1);
-  --na-shadow-lg: 0 20px 50px rgba(15, 23, 42, 0.14);
-  --na-shadow-xl: 0 28px 64px rgba(15, 23, 42, 0.18);
+  --na-shadow-md: 0 10px 26px -4px rgba(15, 23, 42, 0.12)
+  ;
+  --na-shadow-lg: 0 22px 50px -10px rgba(15, 23, 42, 0.16);
+  --na-shadow-xl: 0 30px 70px -14px rgba(15, 23, 42, 0.2);
   --na-shadow-glow: 0 0 0 1px rgba(2, 132, 199, 0.25), 0 0 20px rgba(2, 132, 199, 0.12);
-  --na-focus-ring: 0 0 0 3px rgba(2, 132, 199, 0.28);
+  --na-shadow-glow-success: 0 0 0 1px rgba(21, 152, 98, 0.28), 0 0 18px rgba(21, 152, 98, 0.12);
+  --na-shadow-glow-danger: 0 0 0 1px rgba(219, 44, 92, 0.3), 0 0 18px rgba(219, 44, 92, 0.14);
+  --na-focus-ring: 0 0 0 3px rgba(2, 132, 199, 0.25);
 }
 
 /* —— Motion keyframes —— */
@@ -343,9 +420,22 @@
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.5; transform: scale(0.85); }
 }
+@keyframes na-pulse-ring {
+  0% { box-shadow: 0 0 0 0 var(--na-pulse-color, rgba(41, 182, 255, 0.45)); }
+  70% { box-shadow: 0 0 0 8px rgba(41, 182, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(41, 182, 255, 0); }
+}
 @keyframes panel-fade-in {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
+}
+@keyframes na-scale-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes na-glow-breathe {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
