@@ -1,105 +1,127 @@
 <!DOCTYPE html>
-<html lang="ru" data-theme="dark">
+<html lang="ru" data-theme="dark" data-bs-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=di1">
+  <link rel="stylesheet" href="/css/app.css?v=di2">
+  <link rel="stylesheet" href="/css/discovery.css?v=di2">
   <script>
     try {
       var t = localStorage.getItem('netatlas_theme');
-      document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
+      var theme = t === 'light' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', theme);
+      document.documentElement.setAttribute('data-bs-theme', theme);
     } catch (e) {
       document.documentElement.setAttribute('data-theme', 'dark');
+      document.documentElement.setAttribute('data-bs-theme', 'dark');
     }
   </script>
-
 </head>
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-  <script src="/js/i18n.js?v=di1"></script>
-  <script src="/js/api.js?v=di1"></script>
-  <script src="/js/auth.js?v=di1"></script>
-  <script src="/js/ui.js?v=di1"></script>
-  <script src="/js/app.js?v=di1"></script>
+  <script src="/js/i18n.js?v=di2"></script>
+  <script src="/js/api.js?v=di2"></script>
+  <script src="/js/auth.js?v=di2"></script>
+  <script src="/js/ui.js?v=di2"></script>
+  <script src="/js/app.js?v=di2"></script>
   <script>
     const PRESETS = [
       { value: '10.0.0.0/8', label: '10.0.0.0/8' },
+      { value: '10.116.111.0/24', label: '10.116.111.0/24' },
       { value: '10.120.111.0/24', label: '10.120.111.0/24' },
       { value: '172.16.0.0/12', label: '172.16.0.0/12' },
       { value: '192.168.0.0/16', label: '192.168.0.0/16' },
-      { value: '192.168.1.0/24', label: '192.168.1.0/24' },
     ];
+
+    let pollTimer = null;
 
     App.initShell('discovery', 'title.discovery', (el) => {
       el.innerHTML = `
-        <div class="page-intro">
-          <p class="subtitle">${I18n.t('disc.wizard')} — ${I18n.t('disc.how')}</p>
-        </div>
-        <div class="row g-3">
-          <div class="col-lg-5">
-            <div class="panel">
-              <div class="panel-header"><h3>1. ${I18n.t('disc.seeds')}</h3></div>
-              <div class="panel-body">
+        <div class="disc-wizard">
+          <div class="page-intro" style="margin-bottom:0.25rem">
+            <p class="subtitle">${I18n.t('disc.wizard')} — ${I18n.t('disc.how')}</p>
+          </div>
+          <div class="disc-steps">
+            <span class="disc-step-pill is-active"><span class="disc-step-pill__num">1</span>${I18n.t('disc.step1')}</span>
+            <span class="disc-step-pill is-active"><span class="disc-step-pill__num">2</span>${I18n.t('disc.step2')}</span>
+            <span class="disc-step-pill is-active"><span class="disc-step-pill__num">3</span>${I18n.t('disc.step3')}</span>
+          </div>
+
+          <div class="disc-grid">
+            <div class="disc-panel">
+              <div class="disc-panel__head"><h3>1. ${I18n.t('disc.seeds')}</h3></div>
+              <div class="disc-panel__body">
                 <p class="form-hint mb-3">${I18n.t('disc.hint')}</p>
-                <form id="seed-form" class="form-na mb-3">
-                  <div class="mb-2">
-                    <label>${I18n.t('disc.target')}</label>
-                    <input type="text" id="seed-target" class="form-control" placeholder="${I18n.t('disc.target_ph')}" required>
+                <form id="seed-form">
+                  <div class="disc-field">
+                    <label for="seed-target">${I18n.t('disc.target')}</label>
+                    <input type="text" id="seed-target" class="form-control" placeholder="${I18n.t('disc.target_ph')}" autocomplete="off" required>
                   </div>
-                  <div class="mb-2">
-                    <label>${I18n.t('disc.label')}</label>
-                    <input type="text" id="seed-label" class="form-control" placeholder="${I18n.t('disc.label_ph')}" list="label-presets">
+                  <div class="disc-field">
+                    <label for="seed-label">${I18n.t('disc.label')}</label>
+                    <input type="text" id="seed-label" class="form-control" placeholder="${I18n.t('disc.label_ph')}" list="label-presets" autocomplete="off">
                     <datalist id="label-presets">
                       <option value="${I18n.t('disc.label_ph')}">
                       <option value="DMZ">
                       <option value="Management">
-                      <option value="Wi-Fi">
+                      <option value="Access">
                       <option value="Servers">
                     </datalist>
                   </div>
                   <button type="submit" class="btn-na btn-na-primary">${I18n.t('disc.add_seed')}</button>
                 </form>
-                <div class="form-hint mb-1">${I18n.t('disc.presets')}</div>
-                <div class="hint-row mb-3" id="cidr-presets"></div>
-                <p class="form-hint mb-3">${I18n.t('disc.credentials_hint')}</p>
-                <div id="seeds-list"><p class="empty-state">${I18n.t('common.loading')}</p></div>
+                <div class="form-hint mt-3 mb-1">${I18n.t('disc.presets')}</div>
+                <div class="hint-row mb-2" id="cidr-presets"></div>
+                <p class="form-hint">${I18n.t('disc.credentials_hint')}</p>
+                <div class="disc-seed-list" id="seeds-list"><p class="empty-state">${I18n.t('common.loading')}</p></div>
+              </div>
+            </div>
+
+            <div style="display:grid;gap:1rem">
+              <div class="disc-panel">
+                <div class="disc-panel__head"><h3>2. ${I18n.t('disc.scan_mode')}</h3></div>
+                <div class="disc-panel__body">
+                  <div class="disc-mode-grid" id="scan-modes">
+                    <label class="disc-mode">
+                      <input type="radio" name="scan_mode" value="fast">
+                      <span class="disc-mode__title">${I18n.t('disc.mode_fast')}</span>
+                      <span class="disc-mode__desc">ICMP + базовый инвентарь</span>
+                    </label>
+                    <label class="disc-mode">
+                      <input type="radio" name="scan_mode" value="deep" checked>
+                      <span class="disc-mode__title">${I18n.t('disc.mode_deep')}</span>
+                      <span class="disc-mode__desc">FDB / ARP — для Find Device</span>
+                    </label>
+                    <label class="disc-mode">
+                      <input type="radio" name="scan_mode" value="topology">
+                      <span class="disc-mode__title">${I18n.t('disc.mode_topology')}</span>
+                      <span class="disc-mode__desc">Соседи и связи (LLDP)</span>
+                    </label>
+                  </div>
+                  <p class="form-hint mb-3">${I18n.t('disc.mode_hint')}</p>
+                  <div class="disc-actions">
+                    <button class="btn-na btn-na-secondary" id="btn-start-selected">${I18n.t('disc.start_selected')}</button>
+                    <button class="btn-na btn-na-primary" id="btn-start-job">${I18n.t('disc.start_all')}</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="disc-panel" id="discovery-summary-panel" hidden>
+                <div class="disc-panel__head"><h3>${I18n.t('disc.stats')}</h3></div>
+                <div class="disc-panel__body" id="discovery-summary"></div>
               </div>
             </div>
           </div>
-          <div class="col-lg-7">
-            <div class="panel mb-3">
-              <div class="panel-header"><h3>2. ${I18n.t('disc.scan_mode')}</h3></div>
-              <div class="panel-body">
-                <p class="form-hint mb-3">${I18n.t('disc.mode_hint')}</p>
-                <div class="d-flex flex-wrap gap-3 mb-3" id="scan-modes">
-                  <label class="form-check">
-                    <input class="form-check-input" type="radio" name="scan_mode" value="fast">
-                    <span class="form-check-label">${I18n.t('disc.mode_fast')}</span>
-                  </label>
-                  <label class="form-check">
-                    <input class="form-check-input" type="radio" name="scan_mode" value="deep" checked>
-                    <span class="form-check-label">${I18n.t('disc.mode_deep')}</span>
-                  </label>
-                  <label class="form-check">
-                    <input class="form-check-input" type="radio" name="scan_mode" value="topology">
-                    <span class="form-check-label">${I18n.t('disc.mode_topology')}</span>
-                  </label>
-                </div>
-                <div class="d-flex gap-2 flex-wrap">
-                  <button class="btn-na btn-na-secondary" id="btn-start-selected">${I18n.t('disc.start_selected')}</button>
-                  <button class="btn-na btn-na-primary" id="btn-start-job">${I18n.t('disc.start_all')}</button>
-                </div>
-              </div>
+
+          <div class="disc-panel">
+            <div class="disc-panel__head">
+              <h3>3. ${I18n.t('disc.jobs')}</h3>
+              <button type="button" class="btn-na btn-na-ghost btn-sm" id="btn-refresh-jobs">${I18n.t('common.refresh')}</button>
             </div>
-            <div class="panel mb-3">
-              <div class="panel-header"><h3>3. ${I18n.t('disc.jobs')}</h3></div>
-              <div class="panel-body p-0" id="jobs-list"><p class="empty-state">${I18n.t('common.loading')}</p></div>
-            </div>
-            <div class="panel" id="discovery-summary-panel" hidden>
-              <div class="panel-header"><h3>${I18n.t('disc.stats')}</h3></div>
-              <div class="panel-body" id="discovery-summary"></div>
+            <div class="disc-panel__body disc-panel__body--flush" id="jobs-list">
+              <p class="empty-state p-3">${I18n.t('common.loading')}</p>
             </div>
           </div>
         </div>
@@ -144,8 +166,9 @@
         const mode = document.querySelector('input[name="scan_mode"]:checked')?.value || 'deep';
         const body = { scan_mode: mode };
         if (seedIds) body.seed_ids = seedIds;
-        await Api.startJob(body);
-        Ui.toast(I18n.t('disc.job_started'), 'ok');
+        const job = await Api.startJob(body);
+        const via = job.dispatch === 'inline' ? I18n.t('disc.dispatch_inline') : I18n.t('disc.dispatch_celery');
+        Ui.toast(`${I18n.t('disc.job_started')} (${via})`, 'ok');
         loadJobs();
       }
 
@@ -159,9 +182,12 @@
         try { await startWithMode(ids); } catch (err) { Ui.toast(err.message, 'error'); }
       });
 
+      document.getElementById('btn-refresh-jobs').addEventListener('click', () => loadJobs());
+
       loadSeeds();
       loadJobs();
-      setInterval(loadJobs, 10000);
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(loadJobs, 4000);
     });
 
     async function loadSeeds() {
@@ -169,13 +195,13 @@
       try {
         const seeds = await Api.listSeeds();
         if (!seeds?.length) { el.innerHTML = `<p class="empty-state">${I18n.t('disc.no_seeds')}</p>`; return; }
-        el.innerHTML = seeds.map(s => `
-          <div class="seed-row">
-            <label class="seed-check-wrap">
+        el.innerHTML = seeds.map((s) => `
+          <div class="disc-seed">
+            <label class="disc-seed__main">
               <input type="checkbox" class="seed-check" value="${App.escapeHtml(s.id)}" checked>
               <span>
-                <div class="mono">${App.escapeHtml(s.target)}</div>
-                <small class="text-muted">${App.escapeHtml(s.label || '')}</small>
+                <div class="disc-seed__cidr">${App.escapeHtml(s.target)}</div>
+                <div class="disc-seed__label">${App.escapeHtml(s.label || '—')}</div>
               </span>
             </label>
             <button class="btn-na btn-na-danger btn-sm" data-del="${App.escapeHtml(s.id)}">${I18n.t('common.remove')}</button>
@@ -199,36 +225,119 @@
       const s = job.stats || {};
       const devices = s.inventoried ?? s.devices ?? s.alive ?? 0;
       const links = s.links ?? 0;
-      const vlans = s.vlans ?? s.vlan_count ?? '—';
+      const errors = s.errors ?? 0;
       panel.hidden = false;
       el.innerHTML = `
-        <div class="na-metric na-metric--accent mb-2">
-          <div class="na-metric__label">${I18n.t('disc.found_summary', { devices, links, vlans })}</div>
+        <div class="disc-summary mb-3">
+          <div class="disc-metric"><div class="disc-metric__label">Devices</div><div class="disc-metric__value">${devices}</div></div>
+          <div class="disc-metric"><div class="disc-metric__label">Links</div><div class="disc-metric__value">${links}</div></div>
+          <div class="disc-metric"><div class="disc-metric__label">Errors</div><div class="disc-metric__value">${errors}</div></div>
         </div>
-        <pre class="mono" style="font-size:12px;white-space:pre-wrap">${App.escapeHtml(JSON.stringify(s, null, 2))}</pre>
+        <div class="form-hint">${I18n.t('disc.found_summary', { devices, links, vlans: s.vlans ?? '—' })}</div>
       `;
+    }
+
+    function canCancel(status) {
+      const s = String(status || '').toLowerCase();
+      return s === 'pending' || s === 'running' || s === 'queued';
+    }
+
+    function canRetry(status) {
+      const s = String(status || '').toLowerCase();
+      return s === 'pending' || s === 'failed' || s === 'cancelled';
+    }
+
+    async function cancelJob(id) {
+      if (!confirm(I18n.t('disc.confirm_cancel'))) return;
+      try {
+        await Api.cancelJob(id);
+        Ui.toast(I18n.t('disc.cancelled'), 'ok');
+        loadJobs();
+      } catch (err) { Ui.toast(err.message, 'error'); }
+    }
+
+    async function retryJob(id) {
+      try {
+        const job = await Api.retryJob(id);
+        const via = job.dispatch === 'inline' ? I18n.t('disc.dispatch_inline') : I18n.t('disc.dispatch_celery');
+        Ui.toast(`${I18n.t('disc.retried')} (${via})`, 'ok');
+        loadJobs();
+      } catch (err) { Ui.toast(err.message, 'error'); }
     }
 
     async function loadJobs() {
       const el = document.getElementById('jobs-list');
+      if (!el) return;
       try {
         const jobs = await Api.listJobs();
-        if (!jobs?.length) { el.innerHTML = `<p class="empty-state">${I18n.t('disc.no_jobs')}</p>`; return; }
+        if (!jobs?.length) {
+          el.innerHTML = `<p class="empty-state p-3">${I18n.t('disc.no_jobs')}</p>`;
+          return;
+        }
+
+        const stuck = jobs.some((j) => String(j.status).toLowerCase() === 'pending');
+        const running = jobs.some((j) => ['running', 'pending', 'queued'].includes(String(j.status).toLowerCase()));
         const latestDone = jobs.find((j) => String(j.status).toLowerCase() === 'completed');
         if (latestDone) renderSummary(latestDone);
-        el.innerHTML = `<div class="table-scroll"><table class="data-table"><thead><tr>
-          <th>ID</th><th>${I18n.t('common.status')}</th><th>${I18n.t('disc.scan_mode')}</th><th>${I18n.t('disc.started')}</th><th>${I18n.t('disc.finished')}</th><th>${I18n.t('disc.stats')}</th>
-        </tr></thead><tbody>${jobs.map(j => `<tr>
-          <td class="mono">${App.escapeHtml(j.id?.slice(0, 8))}…</td>
-          <td>${App.statusBadge(j.status)}</td>
-          <td class="mono">${App.escapeHtml(j.config?.scan_mode || '—')}</td>
-          <td>${App.formatDate(j.started_at)}</td>
-          <td>${App.formatDate(j.finished_at)}</td>
-          <td class="mono">${j.stats && Object.keys(j.stats).length
-            ? App.escapeHtml(`dev:${j.stats.inventoried ?? j.stats.alive ?? 0} lnk:${j.stats.links ?? 0}`)
-            : '—'}</td>
-        </tr>`).join('')}</tbody></table></div>`;
-      } catch (err) { el.innerHTML = `<div class="alert-na error m-3">${App.escapeHtml(err.message)}</div>`; }
+
+        el.innerHTML = `
+          ${stuck ? `<div class="disc-alert m-3">${I18n.t('disc.worker_hint')}</div>` : ''}
+          <div class="table-scroll">
+            <table class="disc-job-table">
+              <thead><tr>
+                <th>ID</th>
+                <th>${I18n.t('common.status')}</th>
+                <th>${I18n.t('disc.scan_mode')}</th>
+                <th>${I18n.t('disc.progress')}</th>
+                <th>${I18n.t('disc.stats')}</th>
+                <th>${I18n.t('disc.started')}</th>
+                <th>${I18n.t('disc.actions')}</th>
+              </tr></thead>
+              <tbody>
+                ${jobs.map((j) => {
+                  const st = String(j.status || '').toLowerCase();
+                  const progress = Number(j.progress ?? (st === 'completed' ? 100 : st === 'running' ? 35 : 0));
+                  const stats = j.stats || {};
+                  const live = st === 'running' || st === 'pending';
+                  return `<tr class="${live ? 'is-live' : ''}">
+                    <td class="mono">${App.escapeHtml(j.id?.slice(0, 8))}…</td>
+                    <td>${App.statusBadge(j.status)}${st === 'running' ? ` <span class="text-muted">${I18n.t('disc.live')}</span>` : ''}</td>
+                    <td class="mono">${App.escapeHtml(j.config?.scan_mode || '—')}</td>
+                    <td>
+                      <div class="d-flex align-items-center gap-2">
+                        <div class="disc-progress" title="${progress}%"><div class="disc-progress__bar" style="width:${Math.min(100, progress)}%"></div></div>
+                        <span class="mono">${progress}%</span>
+                      </div>
+                    </td>
+                    <td class="mono">dev:${stats.inventoried ?? 0} · lnk:${stats.links ?? 0}${stats.targets != null ? ` · tgt:${stats.scanned ?? 0}/${stats.targets}` : ''}</td>
+                    <td>${App.formatDate(j.started_at || j.created_at)}</td>
+                    <td>
+                      <div class="disc-job-actions">
+                        ${canCancel(st) ? `<button type="button" class="btn-na btn-na-danger btn-sm" data-cancel="${App.escapeHtml(j.id)}">${I18n.t('disc.cancel')}</button>` : ''}
+                        ${canRetry(st) ? `<button type="button" class="btn-na btn-na-secondary btn-sm" data-retry="${App.escapeHtml(j.id)}">${I18n.t('disc.retry')}</button>` : ''}
+                      </div>
+                    </td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+
+        el.querySelectorAll('[data-cancel]').forEach((btn) => {
+          btn.addEventListener('click', () => cancelJob(btn.dataset.cancel));
+        });
+        el.querySelectorAll('[data-retry]').forEach((btn) => {
+          btn.addEventListener('click', () => retryJob(btn.dataset.retry));
+        });
+
+        // Keep polling faster while jobs are active
+        if (pollTimer && !running) {
+          /* keep 4s interval — harmless */
+        }
+      } catch (err) {
+        el.innerHTML = `<div class="alert-na error m-3">${App.escapeHtml(err.message)}</div>`;
+      }
     }
   </script>
 </body>

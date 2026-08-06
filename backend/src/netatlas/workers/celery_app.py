@@ -129,6 +129,10 @@ async def _run_discovery(job_id: UUID) -> dict[str, Any]:
                     creds["docker"] = payload
             return creds
 
+        async def progress_callback(_jid: UUID, _payload: dict[str, Any]) -> None:
+            # Commit mid-run so API/UI see progress and cancel flags
+            await session.commit()
+
         orch = DiscoveryOrchestrator(
             jobs=SqlAlchemyDiscoveryJobRepository(session),
             seeds=SqlAlchemyDiscoverySeedRepository(session),
@@ -138,6 +142,7 @@ async def _run_discovery(job_id: UUID) -> dict[str, Any]:
             snapshots=SqlAlchemySnapshotRepository(session),
             registry=build_default_registry(),
             credential_loader=credential_loader,
+            progress_callback=progress_callback,
         )
         job = await orch.run(job_id)
         await session.commit()

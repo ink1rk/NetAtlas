@@ -383,7 +383,8 @@ class SqlAlchemyDiscoveryJobRepository:
         return job
 
     async def get(self, job_id: UUID) -> DiscoveryJob | None:
-        m = await self._session.get(DiscoveryJobModel, job_id)
+        # populate_existing so cancel flags from other sessions are visible mid-run
+        m = await self._session.get(DiscoveryJobModel, job_id, populate_existing=True)
         if not m:
             return None
         return DiscoveryJob(

@@ -65,13 +65,27 @@ class DiscoveryOrchestrator:
         self._snmp = SnmpTransport()
         self._ssh = SshTransport()
 
+    async def _is_cancelled(self, job_id: UUID) -> bool:
+        fresh = await self._jobs.get(job_id)
+        if fresh is None:
+            return True
+        if fresh.status == JobStatus.CANCELLED:
+            return True
+        return bool((fresh.config or {}).get("cancelled"))
+
     async def run(self, job_id: UUID) -> DiscoveryJob:
         job = await self._jobs.get(job_id)
         if job is None:
             raise ValueError(f"Job not found: {job_id}")
+        if job.status == JobStatus.CANCELLED or (job.config or {}).get("cancelled"):
+            job.finished_at = job.finished_at or datetime.now(UTC)
+            await self._jobs.update(job)
+            await self._emit(job_id, {"event": "cancelled"})
+            return job
+
         job.status = JobStatus.RUNNING
         job.started_at = datetime.now(UTC)
-        job.stats = {"targets": 0, "alive": 0, "inventoried": 0, "links": 0, "errors": 0}
+        job.stats = {"targets": 0, "alive": 0, "inventoried": 0, "links": 0, "errors": 0, "scanned": 0}
         await self._jobs.update(job)
         await self._emit(job_id, {"event": "started"})
 
@@ -80,12 +94,26 @@ class DiscoveryOrchestrator:
             seeds = await self._seeds.get_many(seed_ids)
             targets = self._expand_targets(seeds)
             job.stats["targets"] = len(targets)
+            await self._jobs.update(job)
+            await self._emit(job_id, {"event": "targets", "count": len(targets)})
             device_index: dict[str, Device] = {}
 
-            for target in targets:
+            for idx, target in enumerate(targets, start=1):
+                if await self._is_cancelled(job_id):
+                    job.status = JobStatus.CANCELLED
+                    job.finished_at = datetime.now(UTC)
+                    job.error = "Cancelled by operator"
+                    await self._jobs.update(job)
+                    await self._emit(job_id, {"event": "cancelled", "stats": job.stats})
+                    return job
+
+                job.stats["scanned"] = idx
                 try:
                     alive = await icmp_probe(target, timeout=float(job.config.get("icmp_timeout", 1.0)))
                     if not alive:
+                        if idx % 25 == 0:
+                            await self._jobs.update(job)
+                            await self._emit(job_id, {"event": "progress", "stats": job.stats})
                         continue
                     job.stats["alive"] = int(job.stats.get("alive", 0)) + 1
                     creds = await self._credential_loader(seeds)
@@ -152,6 +180,7 @@ class DiscoveryOrchestrator:
                     created_links = await self._materialize_links(device, ifaces, neighbors, method)
                     job.stats["links"] = int(job.stats.get("links", 0)) + created_links
                     job.stats["inventoried"] = int(job.stats.get("inventoried", 0)) + 1
+                    await self._jobs.update(job)
                     await self._emit(
                         job_id,
                         {"event": "device", "ip": target, "hostname": device.hostname, "vendor": device.vendor},
@@ -159,7 +188,16 @@ class DiscoveryOrchestrator:
                 except Exception as exc:  # noqa: BLE001
                     logger.exception("Discovery target failed ip=%s", target)
                     job.stats["errors"] = int(job.stats.get("errors", 0)) + 1
+                    await self._jobs.update(job)
                     await self._emit(job_id, {"event": "error", "ip": target, "error": str(exc)})
+
+            if await self._is_cancelled(job_id):
+                job.status = JobStatus.CANCELLED
+                job.finished_at = datetime.now(UTC)
+                job.error = "Cancelled by operator"
+                await self._jobs.update(job)
+                await self._emit(job_id, {"event": "cancelled", "stats": job.stats})
+                return job
 
             snapshot = await self._create_snapshot(job)
             job.stats["snapshot_id"] = str(snapshot.id)
@@ -169,6 +207,13 @@ class DiscoveryOrchestrator:
             await self._emit(job_id, {"event": "completed", "stats": job.stats})
             return job
         except Exception as exc:  # noqa: BLE001
+            if await self._is_cancelled(job_id):
+                job.status = JobStatus.CANCELLED
+                job.error = "Cancelled by operator"
+                job.finished_at = datetime.now(UTC)
+                await self._jobs.update(job)
+                await self._emit(job_id, {"event": "cancelled"})
+                return job
             job.status = JobStatus.FAILED
             job.error = str(exc)
             job.finished_at = datetime.now(UTC)

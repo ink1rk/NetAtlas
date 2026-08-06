@@ -2,7 +2,7 @@
  * NetAtlas shared application shell & utilities
  */
 const App = (() => {
-  const ASSET_V = 'di1';
+  const ASSET_V = 'di2';
   const THEME_KEY = 'netatlas_theme';
   const SIDEBAR_KEY = 'netatlas_sidebar_collapsed';
 
@@ -90,7 +90,9 @@ const App = (() => {
   function applyTheme(theme) {
     const t = theme === 'light' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', t);
+    document.documentElement.setAttribute('data-bs-theme', t);
     document.body?.setAttribute('data-theme', t);
+    document.body?.setAttribute('data-bs-theme', t);
     try { localStorage.setItem(THEME_KEY, t); } catch { /* ignore */ }
     const btn = document.getElementById('theme-btn');
     if (btn) {
@@ -727,13 +729,12 @@ const App = (() => {
   // Apply theme ASAP for FOUC reduction when script loads after body
   try {
     const t = localStorage.getItem(THEME_KEY);
-    if (t === 'light' || t === 'dark') {
-      document.documentElement.setAttribute('data-theme', t);
-    } else {
-      document.documentElement.setAttribute('data-theme', 'dark');
-    }
+    const theme = (t === 'light' || t === 'dark') ? t : 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-bs-theme', theme);
   } catch {
     document.documentElement.setAttribute('data-theme', 'dark');
+    document.documentElement.setAttribute('data-bs-theme', 'dark');
   }
 
   return {
