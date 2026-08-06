@@ -345,6 +345,71 @@ async def device_arp(
     ]
 
 
+@router.get("/devices/{device_id}/bridge")
+async def device_bridge(
+    device_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    _user: Annotated[Any, Depends(require_permission("inventory:read"))],
+) -> dict[str, Any]:
+    """Mikrotik Bridge View: bridges, ports (PVID/tagged/untagged/horizon), RSTP, VLAN table."""
+    device = await session.get(DeviceModel, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    bridge = (device.attributes or {}).get("bridge") or {}
+    return {
+        "device_id": str(device_id),
+        "supported": bool(bridge),
+        "bridges": bridge.get("bridges", []),
+        "ports": bridge.get("ports", []),
+        "vlan_table": bridge.get("vlan_table", []),
+    }
+
+
+@router.get("/devices/{device_id}/printer")
+async def device_printer(
+    device_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    _user: Annotated[Any, Depends(require_permission("inventory:read"))],
+) -> dict[str, Any]:
+    """Printer Discovery: consumables, page count, tray/error state for map badges."""
+    device = await session.get(DeviceModel, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    attrs = device.attributes or {}
+    printer = dict(attrs.get("printer") or {})
+    if attrs.get("device_class") == "printer" or attrs.get("toner_percent") is not None:
+        latest = (
+            await session.execute(
+                select(DeviceMetricModel)
+                .where(DeviceMetricModel.device_id == device_id)
+                .order_by(DeviceMetricModel.collected_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if latest and latest.extras:
+            for key in (
+                "black_toner_percent",
+                "cyan_toner_percent",
+                "magenta_toner_percent",
+                "yellow_toner_percent",
+                "waste_toner_percent",
+                "total_pages",
+                "paper_empty",
+                "status",
+                "printer_errors",
+            ):
+                if key in latest.extras and latest.extras[key] is not None:
+                    printer[key.replace("printer_errors", "errors")] = latest.extras[key]
+    return {
+        "device_id": str(device_id),
+        "supported": attrs.get("device_class") == "printer",
+        "model": device.model,
+        "serial": device.serial,
+        "firmware": device.firmware,
+        **printer,
+    }
+
+
 @router.get("/devices/{device_id}/routes")
 async def device_routes(
     device_id: UUID,
@@ -387,7 +452,7 @@ async def search(
     ]
     # Management IP / MAC text search
     try:
-        from sqlalchemy import cast, String
+        from sqlalchemy import String, cast
 
         device_filters.append(cast(DeviceModel.management_ip, String).ilike(like))
         device_filters.append(cast(DeviceModel.management_mac, String).ilike(like))
@@ -488,7 +553,6 @@ async def search_suggest(
     limit: int = Query(8, ge=1, le=20),
 ) -> dict[str, Any]:
     """Lightweight autocomplete suggestions for the global/device search."""
-    from sqlalchemy import cast, String
 
     like = f"%{q.strip()}%"
     rows = (
@@ -518,4 +582,25 @@ async def search_suggest(
         }
         for d in rows
     ]
-    return {"query": q.strip(), "suggestions": suggestions}
+    q_stripped = q.strip()
+    vlan_filters = [VlanModel.name.ilike(like)]
+    if q_stripped.isdigit():
+        vlan_filters.append(VlanModel.vlan_id == int(q_stripped))
+    vlan_rows = (
+        await session.execute(select(VlanModel).where(or_(*vlan_filters)).limit(max(1, limit // 2)))
+    ).scalars().all()
+    seen_vlans: set[int] = set()
+    for v in vlan_rows:
+        if v.vlan_id in seen_vlans:
+            continue
+        seen_vlans.add(v.vlan_id)
+        suggestions.append(
+            {
+                "type": "vlan",
+                "id": str(v.vlan_id),
+                "label": f"VLAN {v.vlan_id}" + (f" · {v.name}" if v.name else ""),
+                "subtitle": "VLAN",
+                "href": f"/pages/dashboard.html?ws=vlans&vlan={v.vlan_id}",
+            }
+        )
+    return {"query": q.strip(), "suggestions": suggestions[:limit]}
