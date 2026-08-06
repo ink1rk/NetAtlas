@@ -23,6 +23,7 @@ PERMISSIONS: tuple[Permission, ...] = (
     Permission("observability:read", "Read syslog, alerts, SIEM events"),
     Permission("observability:write", "Manage triggers and notification channels"),
     Permission("export:write", "Export topology/inventory"),
+    Permission("credentials:read", "List credential profiles (no secrets)"),
     Permission("credentials:write", "Manage credential profiles"),
     Permission("users:write", "Manage users and roles"),
     Permission("audit:read", "Read audit log"),
@@ -55,6 +56,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "observability:read",
             "observability:write",
             "export:write",
+            "credentials:read",
+            "credentials:write",
             "system:read",
         }
     ),

@@ -184,15 +184,101 @@ async def snmp_arp(ctx: CollectorContext) -> list[ArpEntry]:
 
 
 async def snmp_metrics(ctx: CollectorContext) -> MetricsSample:
-    # Host-resources CPU/memory OIDs when available
-    assert ctx.snmp_get
+    """Collect core MIB metrics for monitoring / trigger evaluation."""
+    assert ctx.snmp_get and ctx.snmp_walk
     params = _cred_snmp(ctx)
-    cpu = await ctx.snmp_get(ctx.target_ip, "1.3.6.1.2.1.25.3.3.1.2.1", **params)
+    extras: dict[str, Any] = {}
+
+    # CPU — average hrProcessorLoad
+    cpu_percent: float | None = None
     try:
-        cpu_percent = float(cpu) if cpu else None
-    except ValueError:
+        cpu_rows = await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.25.3.3.1.2", **params)
+        loads = []
+        for _, val in cpu_rows:
+            try:
+                loads.append(float(val))
+            except ValueError:
+                continue
+        if loads:
+            cpu_percent = sum(loads) / len(loads)
+            extras["cpu_cores_sampled"] = len(loads)
+        else:
+            cpu = await ctx.snmp_get(ctx.target_ip, "1.3.6.1.2.1.25.3.3.1.2.1", **params)
+            cpu_percent = float(cpu) if cpu else None
+    except Exception:
         cpu_percent = None
-    return MetricsSample(cpu_percent=cpu_percent)
+
+    # Memory — hrStorage RAM entries (type .2.1.2)
+    memory_percent: float | None = None
+    try:
+        types = {
+            oid.rsplit(".", 1)[-1]: val
+            for oid, val in await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.25.2.3.1.2", **params)
+        }
+        sizes = {
+            oid.rsplit(".", 1)[-1]: val
+            for oid, val in await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.25.2.3.1.5", **params)
+        }
+        used = {
+            oid.rsplit(".", 1)[-1]: val
+            for oid, val in await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.25.2.3.1.6", **params)
+        }
+        for idx, typ in types.items():
+            if "2.1.2" not in str(typ) and not str(typ).endswith(".2"):
+                continue
+            try:
+                size_u = float(sizes.get(idx) or 0)
+                used_u = float(used.get(idx) or 0)
+            except ValueError:
+                continue
+            if size_u > 0:
+                memory_percent = round((used_u / size_u) * 100.0, 2)
+                extras["memory_hrstorage_index"] = idx
+                break
+    except Exception:
+        memory_percent = None
+
+    # Uptime
+    try:
+        uptime_raw = await ctx.snmp_get(ctx.target_ip, SNMP_SYS_UPTIME, **params)
+        if uptime_raw:
+            # timeticks → seconds
+            extras["uptime_seconds"] = int(float(uptime_raw) / 100.0)
+    except Exception:
+        pass
+
+    # IF-MIB oper status + error counters (aggregated)
+    try:
+        opers = await ctx.snmp_walk(ctx.target_ip, SNMP_IF_OPER, **params)
+        total = len(opers)
+        down = sum(1 for _, v in opers if str(v).strip() == "2")
+        extras["interfaces_total"] = total
+        extras["interfaces_down"] = down
+    except Exception:
+        pass
+    try:
+        in_err = await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.14", **params)
+        out_err = await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.20", **params)
+
+        def _sum(rows: list[tuple[str, str]]) -> int:
+            total = 0
+            for _, v in rows:
+                try:
+                    total += int(float(v))
+                except ValueError:
+                    continue
+            return total
+
+        extras["if_in_errors"] = _sum(in_err)
+        extras["if_out_errors"] = _sum(out_err)
+    except Exception:
+        pass
+
+    return MetricsSample(
+        cpu_percent=cpu_percent,
+        memory_percent=memory_percent,
+        extras=extras,
+    )
 
 
 def _if_status(raw: str | None) -> str:

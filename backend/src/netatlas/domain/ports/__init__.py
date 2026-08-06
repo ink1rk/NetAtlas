@@ -71,6 +71,7 @@ class MetricsSample:
     memory_percent: float | None = None
     temperature_c: float | None = None
     interface_counters: list[dict[str, Any]] = field(default_factory=list)
+    extras: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

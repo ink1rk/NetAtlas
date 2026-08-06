@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=di2">
+  <link rel="stylesheet" href="/css/app.css?v=mon1">
   <script>
     try {
       var t = localStorage.getItem('netatlas_theme');
@@ -21,17 +21,48 @@
 </head>
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-  <script src="/js/i18n.js?v=di2"></script>
-  <script src="/js/api.js?v=di2"></script>
-  <script src="/js/auth.js?v=di2"></script>
-<script src="/js/ui.js?v=di2"></script>
-  <script src="/js/app.js?v=di2"></script>
+  <script src="/js/i18n.js?v=mon1"></script>
+  <script src="/js/api.js?v=mon1"></script>
+  <script src="/js/auth.js?v=mon1"></script>
+<script src="/js/ui.js?v=mon1"></script>
+  <script src="/js/app.js?v=mon1"></script>
   <script>
     App.initShell('observability', 'title.observability', async (el) => {
       el.innerHTML = `
         <div class="page-intro">
           <p class="subtitle">${I18n.t('obs.subtitle')}</p>
           <div class="pill-row" id="obs-status"></div>
+        </div>
+        <div class="panel mt-3">
+          <div class="panel-header"><h3>${I18n.t('obs.create_trigger')}</h3></div>
+          <div class="panel-body">
+            <form id="trigger-form" class="row g-2 align-items-end">
+              <div class="col-md-3">
+                <label class="form-hint">${I18n.t('obs.name')}</label>
+                <input class="form-control" id="tr-name" required placeholder="High CPU custom">
+              </div>
+              <div class="col-md-3">
+                <label class="form-hint">${I18n.t('obs.metric')}</label>
+                <select class="form-select" id="tr-metric"></select>
+              </div>
+              <div class="col-md-2">
+                <label class="form-hint">${I18n.t('obs.operator')}</label>
+                <select class="form-select" id="tr-op">
+                  <option value="gt">&gt;</option>
+                  <option value="gte">&gt;=</option>
+                  <option value="lt">&lt;</option>
+                  <option value="lte">&lt;=</option>
+                </select>
+              </div>
+              <div class="col-md-2">
+                <label class="form-hint">${I18n.t('obs.threshold')}</label>
+                <input class="form-control" id="tr-threshold" type="number" value="90" required>
+              </div>
+              <div class="col-md-2">
+                <button class="btn-na btn-na-primary w-100" type="submit">${I18n.t('obs.create_trigger')}</button>
+              </div>
+            </form>
+          </div>
         </div>
         <div class="panel mt-3">
           <div class="panel-header"><h3>${I18n.t('obs.triggers')}</h3></div>
@@ -174,6 +205,34 @@
         if (q) params.set('q', q);
         if (category) params.set('category', category);
         loadEvents(params.toString());
+      });
+
+      try {
+        const catalog = await Api.metricsCatalog();
+        const sel = document.getElementById('tr-metric');
+        sel.innerHTML = (catalog.items || []).map((m) =>
+          `<option value="${App.escapeHtml(m.name)}">${App.escapeHtml(m.label || m.name)} (${App.escapeHtml(m.unit || '')})</option>`
+        ).join('');
+      } catch { /* optional */ }
+
+      document.getElementById('trigger-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          await Api.createTrigger({
+            name: document.getElementById('tr-name').value.trim(),
+            kind: 'metric_threshold',
+            severity: 'warning',
+            expression: {
+              metric: document.getElementById('tr-metric').value,
+              op: document.getElementById('tr-op').value,
+              threshold: Number(document.getElementById('tr-threshold').value),
+              for_minutes: 5,
+            },
+          });
+          Ui.toast(I18n.t('obs.trigger_created'), 'ok');
+          e.target.reset();
+          loadTriggers();
+        } catch (err) { Ui.toast(err.message, 'error'); }
       });
 
       await Promise.all([loadStatus(), loadTriggers(), loadAlerts(), loadEvents(), loadSiem()]);

@@ -52,6 +52,7 @@ class DiscoveryOrchestrator:
         registry: CollectorRegistry,
         credential_loader: Any,
         progress_callback: Any | None = None,
+        on_device: Any | None = None,
     ) -> None:
         self._jobs = jobs
         self._seeds = seeds
@@ -62,6 +63,7 @@ class DiscoveryOrchestrator:
         self._registry = registry
         self._credential_loader = credential_loader
         self._progress = progress_callback
+        self._on_device = on_device
         self._snmp = SnmpTransport()
         self._ssh = SshTransport()
 
@@ -139,6 +141,11 @@ class DiscoveryOrchestrator:
                     )
                     device = await self._devices.upsert_by_identity(device)
                     device_index[target] = device
+                    if self._on_device:
+                        try:
+                            await self._on_device(device, seeds)
+                        except Exception:  # noqa: BLE001
+                            logger.exception("on_device callback failed ip=%s", target)
                     ifaces = [
                         Interface(
                             id=uuid4(),

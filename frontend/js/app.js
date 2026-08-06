@@ -2,7 +2,7 @@
  * NetAtlas shared application shell & utilities
  */
 const App = (() => {
-  const ASSET_V = 'di2';
+  const ASSET_V = 'mon1';
   const THEME_KEY = 'netatlas_theme';
   const SIDEBAR_KEY = 'netatlas_sidebar_collapsed';
 
@@ -21,6 +21,7 @@ const App = (() => {
       ]},
       { section: I18n.t('nav.operations'), items: [
         { id: 'discovery', label: I18n.t('nav.discovery'), href: '/pages/discovery.html', icon: 'radar' },
+        { id: 'credentials', label: I18n.t('nav.credentials'), href: '/pages/credentials.html', icon: 'key' },
         { id: 'observability', label: I18n.t('nav.observability'), href: '/pages/observability.html', icon: 'shield' },
         { id: 'search', label: I18n.t('nav.search'), href: '/pages/search.html', icon: 'search' },
       ]},
@@ -49,6 +50,7 @@ const App = (() => {
     menu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>',
     cable: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9h6v6H4z"/><path d="M14 9h6v6h-6z"/><path d="M10 12h4"/><circle cx="7" cy="7" r="1"/><circle cx="17" cy="17" r="1"/></svg>',
     archive: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><path d="M10 12h4"/></svg>',
+    key: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>',
   };
 
   const LOGO_SVG = '<img src="/static/brand/netatlas-mark.svg" alt="NetAtlas" class="logo-mark">';

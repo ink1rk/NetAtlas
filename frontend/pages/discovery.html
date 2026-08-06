@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=di2">
-  <link rel="stylesheet" href="/css/discovery.css?v=di2">
+  <link rel="stylesheet" href="/css/app.css?v=mon1">
+  <link rel="stylesheet" href="/css/discovery.css?v=mon1">
   <script>
     try {
       var t = localStorage.getItem('netatlas_theme');
@@ -21,11 +21,11 @@
 </head>
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-  <script src="/js/i18n.js?v=di2"></script>
-  <script src="/js/api.js?v=di2"></script>
-  <script src="/js/auth.js?v=di2"></script>
-  <script src="/js/ui.js?v=di2"></script>
-  <script src="/js/app.js?v=di2"></script>
+  <script src="/js/i18n.js?v=mon1"></script>
+  <script src="/js/api.js?v=mon1"></script>
+  <script src="/js/auth.js?v=mon1"></script>
+  <script src="/js/ui.js?v=mon1"></script>
+  <script src="/js/app.js?v=mon1"></script>
   <script>
     const PRESETS = [
       { value: '10.0.0.0/8', label: '10.0.0.0/8' },
@@ -70,11 +70,15 @@
                       <option value="Servers">
                     </datalist>
                   </div>
+                  <div class="disc-field">
+                    <label>${I18n.t('disc.cred_profiles')}</label>
+                    <div id="seed-cred-list" class="disc-seed-list"></div>
+                    <p class="form-hint mt-1"><a href="/pages/credentials.html">${I18n.t('nav.credentials')}</a> — ${I18n.t('disc.credentials_hint')}</p>
+                  </div>
                   <button type="submit" class="btn-na btn-na-primary">${I18n.t('disc.add_seed')}</button>
                 </form>
                 <div class="form-hint mt-3 mb-1">${I18n.t('disc.presets')}</div>
                 <div class="hint-row mb-2" id="cidr-presets"></div>
-                <p class="form-hint">${I18n.t('disc.credentials_hint')}</p>
                 <div class="disc-seed-list" id="seeds-list"><p class="empty-state">${I18n.t('common.loading')}</p></div>
               </div>
             </div>
@@ -153,11 +157,13 @@
         e.preventDefault();
         const target = document.getElementById('seed-target').value.trim();
         const label = document.getElementById('seed-label').value.trim() || undefined;
+        const credential_profile_ids = [...document.querySelectorAll('.seed-cred-check:checked')].map((el) => el.value);
         try {
-          await Api.createSeed({ target, label });
+          await Api.createSeed({ target, label, credential_profile_ids });
           Ui.pushRecent('seeds', target);
           document.getElementById('seed-form').reset();
           Ui.toast(I18n.t('disc.added'), 'ok');
+          loadCredentialOptions();
           loadSeeds();
         } catch (err) { Ui.toast(err.message, 'error'); }
       });
@@ -184,29 +190,59 @@
 
       document.getElementById('btn-refresh-jobs').addEventListener('click', () => loadJobs());
 
+      loadCredentialOptions();
       loadSeeds();
       loadJobs();
       if (pollTimer) clearInterval(pollTimer);
       pollTimer = setInterval(loadJobs, 4000);
     });
 
+    let credentialProfiles = [];
+
+    async function loadCredentialOptions() {
+      const el = document.getElementById('seed-cred-list');
+      if (!el) return;
+      try {
+        credentialProfiles = await Api.listCredentials().catch(() => []);
+        if (!credentialProfiles.length) {
+          el.innerHTML = `<div class="form-hint">${I18n.t('disc.cred_none')}</div>`;
+          return;
+        }
+        el.innerHTML = credentialProfiles.map((c) => `
+          <label class="disc-seed" style="cursor:pointer">
+            <span class="disc-seed__main">
+              <input type="checkbox" class="seed-cred-check" value="${App.escapeHtml(c.id)}">
+              <span>
+                <div class="disc-seed__cidr">${App.escapeHtml(c.name)}</div>
+                <div class="disc-seed__label">${App.escapeHtml(c.protocol)}</div>
+              </span>
+            </span>
+          </label>
+        `).join('');
+      } catch {
+        el.innerHTML = `<div class="form-hint">${I18n.t('disc.cred_none')}</div>`;
+      }
+    }
+
     async function loadSeeds() {
       const el = document.getElementById('seeds-list');
       try {
         const seeds = await Api.listSeeds();
         if (!seeds?.length) { el.innerHTML = `<p class="empty-state">${I18n.t('disc.no_seeds')}</p>`; return; }
-        el.innerHTML = seeds.map((s) => `
+        el.innerHTML = seeds.map((s) => {
+          const credCount = (s.credential_profile_ids || []).length;
+          return `
           <div class="disc-seed">
             <label class="disc-seed__main">
               <input type="checkbox" class="seed-check" value="${App.escapeHtml(s.id)}" checked>
               <span>
                 <div class="disc-seed__cidr">${App.escapeHtml(s.target)}</div>
-                <div class="disc-seed__label">${App.escapeHtml(s.label || '—')}</div>
+                <div class="disc-seed__label">${App.escapeHtml(s.label || '—')} · SNMP/SSH: ${credCount}</div>
               </span>
             </label>
             <button class="btn-na btn-na-danger btn-sm" data-del="${App.escapeHtml(s.id)}">${I18n.t('common.remove')}</button>
-          </div>
-        `).join('');
+          </div>`;
+        }).join('');
         el.querySelectorAll('[data-del]').forEach((btn) => {
           btn.addEventListener('click', () => deleteSeed(btn.dataset.del));
         });

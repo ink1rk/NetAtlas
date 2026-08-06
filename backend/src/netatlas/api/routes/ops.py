@@ -556,7 +556,7 @@ async def download_export(
 @credentials_router.get("")
 async def list_credentials(
     session: Annotated[AsyncSession, Depends(get_db)],
-    _user: Annotated[Any, Depends(require_permission("credentials:write"))],
+    _user: Annotated[Any, Depends(require_permission("credentials:read"))],
 ) -> list[dict[str, Any]]:
     rows = (await session.execute(select(CredentialProfileModel))).scalars().all()
     return [
@@ -578,12 +578,23 @@ async def create_credential(
     vault: Annotated[AesGcmSecretVault, Depends(get_vault)],
     _user: Annotated[Any, Depends(require_permission("credentials:write"))],
 ) -> dict[str, Any]:
-    plaintext = json.dumps(body.secret).encode("utf-8")
+    protocol = (body.protocol or "").lower().strip()
+    if protocol not in {"snmp", "snmpv2", "snmpv3", "ssh", "unifi", "proxmox", "vsphere", "esxi", "ideco", "docker"}:
+        raise HTTPException(status_code=422, detail="Unsupported protocol")
+    # Normalize snmpv2/snmpv3 → snmp with version in secret
+    secret = dict(body.secret or {})
+    if protocol == "snmpv2":
+        protocol = "snmp"
+        secret.setdefault("version", 2)
+    elif protocol == "snmpv3":
+        protocol = "snmp"
+        secret.setdefault("version", 3)
+    plaintext = json.dumps(secret).encode("utf-8")
     ciphertext, nonce, key_version = vault.encrypt(plaintext)
     m = CredentialProfileModel(
         id=uuid4(),
         name=body.name,
-        protocol=body.protocol,
+        protocol=protocol,
         ciphertext=ciphertext,
         nonce=nonce,
         key_version=key_version,
@@ -591,6 +602,72 @@ async def create_credential(
     session.add(m)
     await session.commit()
     return {"id": str(m.id), "name": m.name, "protocol": m.protocol, "key_version": m.key_version}
+
+
+@credentials_router.delete("/{profile_id}", status_code=204)
+async def delete_credential(
+    profile_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    _user: Annotated[Any, Depends(require_permission("credentials:write"))],
+) -> None:
+    m = await session.get(CredentialProfileModel, profile_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Credential profile not found")
+    await session.delete(m)
+    await session.commit()
+
+
+class SeedCredentialsUpdate(BaseModel):
+    credential_profile_ids: list[UUID] = Field(default_factory=list)
+
+
+@discovery_router.patch("/seeds/{seed_id}")
+async def update_seed(
+    seed_id: UUID,
+    body: SeedCredentialsUpdate,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    _user: Annotated[Any, Depends(require_permission("discovery:write"))],
+) -> dict[str, Any]:
+    from netatlas.infrastructure.persistence.models import DiscoverySeedModel
+
+    m = await session.get(DiscoverySeedModel, seed_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Seed not found")
+    m.credential_profile_ids = [str(x) for x in body.credential_profile_ids]
+    await session.commit()
+    return {
+        "id": str(m.id),
+        "target": m.target,
+        "label": m.label,
+        "enabled": m.enabled,
+        "credential_profile_ids": list(m.credential_profile_ids or []),
+    }
+
+
+class BulkAssignCredentials(BaseModel):
+    device_ids: list[UUID] = Field(default_factory=list)
+    credential_profile_ids: list[UUID] = Field(min_length=1)
+    all_devices: bool = False
+
+
+@credentials_router.post("/assign")
+async def assign_credentials_bulk(
+    body: BulkAssignCredentials,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    _user: Annotated[Any, Depends(require_permission("credentials:write"))],
+) -> dict[str, Any]:
+    from netatlas.infrastructure.security.credential_resolver import bind_device_credentials
+
+    device_ids = list(body.device_ids)
+    if body.all_devices:
+        device_ids = list((await session.execute(select(DeviceModel.id))).scalars().all())
+    if not device_ids:
+        raise HTTPException(status_code=422, detail="No devices selected")
+    linked = 0
+    for did in device_ids:
+        linked += await bind_device_credentials(session, did, body.credential_profile_ids)
+    await session.commit()
+    return {"devices": len(device_ids), "links_created": linked}
 
 
 @system_router.get("/healthz")
