@@ -2,6 +2,16 @@
 
 All notable changes to NetAtlas are documented in this file.
 
+## [1.2.0] - 2026-08-06
+
+### Added
+- Credentials UI (SNMPv2/v3/SSH) + assign profiles to all devices
+- Device credential attach API/UI for post-discovery monitoring
+- Real metrics collection sweep (HOST-RESOURCES / IF-MIB / SNMPv2-MIB)
+- MIB metrics catalog for trigger building
+- Trigger create form from metric catalog
+- Seed credential profile picker in Discovery Wizard
+
 ## [1.1.1] - 2026-08-06
 
 ### Fixed
