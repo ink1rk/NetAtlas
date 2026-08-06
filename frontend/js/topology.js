@@ -9,14 +9,14 @@ const Topology = (() => {
   let viewportHandler = null;
 
   const ROLE_COLORS = {
-    core: '#00B8FF',
-    distribution: '#7C3AED',
-    access: '#10B981',
-    firewall: '#EF4444',
-    server: '#3B82F6',
-    vm: '#8B5CF6',
-    storage: '#F59E0B',
-    unknown: '#64748B',
+    core: '#29B6FF',
+    distribution: '#8B7CFF',
+    access: '#34D399',
+    firewall: '#FB5B78',
+    server: '#4C9AFF',
+    vm: '#B69CFF',
+    storage: '#FBB03B',
+    unknown: '#5B6C87',
   };
 
   function resolveNodeColor(n) {
@@ -41,12 +41,12 @@ const Topology = (() => {
   function themeColors() {
     const dark = (document.documentElement.getAttribute('data-theme') || 'dark') !== 'light';
     return {
-      nodeBg: dark ? '#111827' : '#FFFFFF',
-      label: dark ? '#F8FAFC' : '#0F172A',
-      edge: dark ? 'rgba(0, 184, 255, 0.28)' : 'rgba(2, 132, 199, 0.35)',
-      edgeLabel: dark ? '#64748B' : '#64748B',
-      selectedBg: dark ? '#1a2332' : '#E8EEF6',
-      miniBg: dark ? 'rgba(7, 11, 20, 0.2)' : 'rgba(241, 245, 249, 0.2)',
+      nodeBg: dark ? '#0D1220' : '#FFFFFF',
+      label: dark ? '#F3F6FB' : '#0E1626',
+      edge: dark ? 'rgba(41, 182, 255, 0.28)' : 'rgba(2, 132, 199, 0.35)',
+      edgeLabel: dark ? '#8B99B0' : '#64748B',
+      selectedBg: dark ? '#1B2740' : '#EAF1F9',
+      miniBg: dark ? 'rgba(5, 7, 12, 0.2)' : 'rgba(243, 246, 251, 0.2)',
     };
   }
 
@@ -84,21 +84,24 @@ const Topology = (() => {
         style: {
           opacity: 1,
           'border-width': 3,
-          'border-color': '#00B8FF',
+          'border-color': '#29B6FF',
+          'overlay-color': '#29B6FF',
+          'overlay-opacity': 0.12,
+          'overlay-padding': 6,
           'z-index': 10,
         },
       },
       {
         selector: 'node.role-group',
         style: {
-          'background-color': '#0B1220',
-          'background-opacity': 0.2,
+          'background-color': '#0D1220',
+          'background-opacity': 0.25,
           'border-width': 1,
-          'border-color': '#334155',
+          'border-color': '#2C3A52',
           'border-style': 'dashed',
           label: 'data(label)',
           'font-size': 11,
-          color: '#94A3B8',
+          color: '#8B99B0',
           'text-valign': 'top',
           'text-margin-y': -8,
           padding: 18,
@@ -118,8 +121,8 @@ const Topology = (() => {
         style: {
           opacity: 1,
           width: 3,
-          'line-color': '#00B8FF',
-          'target-arrow-color': '#00B8FF',
+          'line-color': '#29B6FF',
+          'target-arrow-color': '#29B6FF',
           'line-style': 'solid',
           'z-index': 9,
         },
@@ -151,9 +154,12 @@ const Topology = (() => {
       {
         selector: 'node:selected',
         style: {
-          'border-color': '#00B8FF',
+          'border-color': '#29B6FF',
           'border-width': 3,
           'background-color': c.selectedBg,
+          'overlay-color': '#29B6FF',
+          'overlay-opacity': 0.14,
+          'overlay-padding': 8,
         },
       },
       {
@@ -176,15 +182,24 @@ const Topology = (() => {
       {
         selector: 'edge:selected',
         style: {
-          'line-color': '#00B8FF',
-          'target-arrow-color': '#00B8FF',
+          'line-color': '#29B6FF',
+          'target-arrow-color': '#29B6FF',
           width: 3,
           opacity: 1,
         },
       },
       {
         selector: '.highlighted',
-        style: { 'border-color': '#00B8FF', 'line-color': '#00B8FF' },
+        style: { 'border-color': '#29B6FF', 'line-color': '#29B6FF' },
+      },
+      {
+        selector: 'node.is-hovered',
+        style: {
+          'border-width': 3,
+          'overlay-color': '#29B6FF',
+          'overlay-opacity': 0.1,
+          'overlay-padding': 5,
+        },
       },
     ];
   }
@@ -205,7 +220,7 @@ const Topology = (() => {
         selector: 'edge',
         style: {
           width: 1,
-          'line-color': 'rgba(0, 184, 255, 0.35)',
+          'line-color': 'rgba(41, 182, 255, 0.35)',
           'curve-style': 'haystack',
           'haystack-radius': 0,
           'target-arrow-shape': 'none',
@@ -314,9 +329,9 @@ const Topology = (() => {
       width: w,
       height: h,
       'background-opacity': 0.08,
-      'background-color': '#00B8FF',
+      'background-color': '#29B6FF',
       'border-width': 1,
-      'border-color': '#00B8FF',
+      'border-color': '#29B6FF',
       'border-opacity': 0.7,
       label: '',
       events: 'no',
@@ -483,6 +498,17 @@ const Topology = (() => {
         if (options.onNodeClick) options.onNodeClick(id, evt.target.data());
         else if (!options.compact) window.location.href = `/pages/device-detail.html?id=${id}`;
       });
+
+      cy.on('mouseover', 'node', (evt) => {
+        evt.target.addClass('is-hovered');
+        el.style.cursor = 'pointer';
+      });
+      cy.on('mouseout', 'node', (evt) => {
+        evt.target.removeClass('is-hovered');
+        el.style.cursor = 'default';
+      });
+      cy.on('mouseover', 'edge', () => { el.style.cursor = 'pointer'; });
+      cy.on('mouseout', 'edge', () => { el.style.cursor = 'default'; });
 
       cy.on('tap', 'edge', (evt) => {
         if (options.onEdgeClick) {

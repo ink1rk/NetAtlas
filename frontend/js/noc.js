@@ -772,7 +772,9 @@ const Noc = (() => {
     if (state.inspectorTab === 'overview') {
       body.innerHTML = `<div class="na-empty"><div class="na-spinner"></div></div>`;
       let intel = null;
+      let metrics = null;
       try { intel = await Api.deviceIntelligence(sel.id); } catch { /* fallback to basic */ }
+      try { metrics = await Api.getDeviceMetrics(sel.id); } catch { /* telemetry optional */ }
       const role = intel?.role || {
         role: d.network_role || d.role || 'unknown',
         confidence: d.role_confidence || 0,
@@ -780,12 +782,43 @@ const Noc = (() => {
       };
       const meta = intel?.metadata || {};
       const identity = intel?.identity || d;
+      const rel = intel?.relationships || {};
+      const vlans = rel.vlans || [];
+      const neighbors = rel.neighbors || [];
+      const linkStats = rel.links || {};
+      const latest = metrics?.latest || (metrics?.history || [])[metrics?.history?.length - 1] || null;
+      const confidencePct = Math.round(role.confidence || 0);
+      const statusOk = String(identity.status || d.status || '').toLowerCase() === 'up';
+
+      const gauge = (label, value, unit, tone) => `
+        <div class="noc-gauge noc-gauge--${tone}">
+          <div class="noc-gauge__ring" style="--gauge-pct:${Math.max(0, Math.min(100, Number(value) || 0))}">
+            <span>${value != null ? Math.round(value) : '—'}${value != null ? unit : ''}</span>
+          </div>
+          <div class="noc-gauge__label">${label}</div>
+        </div>
+      `;
+
       body.innerHTML = `
-        <div class="na-badge na-badge--info" style="margin-bottom:10px">${App.escapeHtml(String(role.role || 'unknown').toUpperCase())}
-          · ${Math.round(role.confidence || 0)}%</div>
-        <div class="na-hint" style="margin-bottom:12px">${(role.reasons || []).slice(0, 4).map((r) => App.escapeHtml(r)).join(' · ') || I18n.t('noc.role_auto')}</div>
+        <div class="noc-device-hero">
+          <div class="noc-device-hero__icon na-card-icon" style="--na-card-accent:var(--na-card-device);width:44px;height:44px">${App.ICONS.server}</div>
+          <div class="noc-device-hero__meta">
+            <div class="noc-device-hero__role">
+              <span class="na-status na-status--${statusOk ? 'up' : 'down'}"><span class="na-status__dot"></span>${App.escapeHtml(I18n.statusLabel(identity.status || d.status))}</span>
+              <span class="na-badge na-badge--info">${App.escapeHtml(String(role.role || 'unknown'))} · ${confidencePct}%</span>
+            </div>
+            <div class="noc-hint-row">${(role.reasons || []).slice(0, 3).map((r) => App.escapeHtml(r)).join(' · ') || I18n.t('noc.role_auto')}</div>
+          </div>
+        </div>
+
+        <div class="noc-gauge-row">
+          ${gauge(I18n.t('device.cpu') || 'CPU', latest?.cpu_percent, '%', (latest?.cpu_percent || 0) > 85 ? 'danger' : (latest?.cpu_percent || 0) > 65 ? 'warning' : 'success')}
+          ${gauge(I18n.t('device.memory') || 'RAM', latest?.memory_percent, '%', (latest?.memory_percent || 0) > 85 ? 'danger' : (latest?.memory_percent || 0) > 65 ? 'warning' : 'success')}
+          ${gauge('°C', latest?.temperature_c, '°', (latest?.temperature_c || 0) > 70 ? 'danger' : (latest?.temperature_c || 0) > 55 ? 'warning' : 'accent')}
+        </div>
+        ${!latest ? `<div class="na-hint" style="margin:-6px 0 12px">${I18n.t('device.no_metrics') || 'No telemetry yet'}</div>` : ''}
+
         <div class="noc-kv">
-          <div class="noc-kv__k">${I18n.t('common.status')}</div><div class="noc-kv__v">${App.statusBadge(identity.status || d.status)}</div>
           <div class="noc-kv__k">${I18n.t('common.vendor')}</div><div class="noc-kv__v">${App.escapeHtml(identity.vendor || d.vendor || '—')}</div>
           <div class="noc-kv__k">${I18n.t('common.model')}</div><div class="noc-kv__v">${App.escapeHtml(identity.model || d.model || '—')}</div>
           <div class="noc-kv__k">${I18n.t('devices.mgmt_ip')}</div><div class="noc-kv__v">${App.escapeHtml(identity.management_ip || d.management_ip || '—')}</div>
@@ -797,6 +830,28 @@ const Noc = (() => {
           <div class="noc-kv__k">Owner</div><div class="noc-kv__v">${App.escapeHtml(meta.owner || '—')}</div>
           <div class="noc-kv__k">${I18n.t('device.last_seen')}</div><div class="noc-kv__v">${App.formatDate(intel?.lifecycle?.last_seen_at || d.last_seen_at)}</div>
         </div>
+
+        <div class="noc-section-card na-card--interface">
+          <div class="noc-section-card__head"><span class="na-card-icon" style="--na-card-accent:var(--na-card-interface);width:24px;height:24px">${App.ICONS.layers}</span>${I18n.t('ws.vlans')} (${vlans.length})</div>
+          <div class="noc-vlan-chips">
+            ${vlans.slice(0, 10).map((v) => `<span class="na-chip">VLAN ${App.escapeHtml(String(v.vlan_id))}${v.name ? ' · ' + App.escapeHtml(v.name) : ''}</span>`).join('') || `<span class="na-hint">${I18n.t('noc.empty')}</span>`}
+          </div>
+        </div>
+
+        <div class="noc-section-card na-card--link">
+          <div class="noc-section-card__head"><span class="na-card-icon" style="--na-card-accent:var(--na-card-link);width:24px;height:24px">${App.ICONS.share}</span>${I18n.t('noc.tab.neighbors')} · ${I18n.t('noc.mini_topo') || 'Mini Topology'}</div>
+          <div class="noc-mini-topo">
+            <div class="noc-mini-topo__center" title="${App.escapeHtml(identity.hostname || d.hostname || '')}">${App.ICONS.server}</div>
+            <div class="noc-mini-topo__links">
+              ${neighbors.slice(0, 6).map(() => `<span class="noc-mini-topo__line"></span>`).join('')}
+            </div>
+            <div class="noc-mini-topo__nodes">
+              ${neighbors.slice(0, 6).map((n) => `<span class="noc-mini-topo__node" title="${App.escapeHtml(n.remote_hostname || n.protocol || 'neighbor')}"></span>`).join('') || `<span class="na-hint">${I18n.t('noc.empty')}</span>`}
+            </div>
+          </div>
+          <div class="na-hint" style="margin-top:8px">${neighbors.length} ${I18n.t('noc.tab.neighbors').toLowerCase()} · ${linkStats.links || 0} links · ${linkStats.trunk_links || 0} trunk</div>
+        </div>
+
         <div class="noc-inspector__actions">
           <button type="button" class="na-btn na-btn--primary na-btn--sm" data-act="focus">${state.focusMode ? I18n.t('noc.clear_focus') : I18n.t('noc.focus_mode')}</button>
           <button type="button" class="na-btn na-btn--secondary na-btn--sm" data-act="detect">${I18n.t('noc.detect_role')}</button>
