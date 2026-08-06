@@ -61,6 +61,41 @@ async def load_profiles(
     return creds
 
 
+async def load_profile_candidates(
+    session: AsyncSession,
+    vault: AesGcmSecretVault,
+    profile_ids: list[UUID],
+    *,
+    default_snmp: bool = True,
+) -> list[dict[str, Any]]:
+    """Credential Manager rotation: one candidate credential bag per profile.
+
+    Unlike `load_profiles` (which merges everything into a single bag, so only
+    the last SNMP profile survives), this returns profiles individually so the
+    discovery orchestrator can try each SNMP profile in turn until one answers,
+    then remember which one worked (`_profile_id`). SSH/API profiles are still
+    merged into every candidate so non-SNMP collection isn't affected by
+    rotation. A default public/v2c candidate is appended last as a fallback.
+    """
+    if not profile_ids:
+        return [{"snmp": {"community": "public", "version": 2}}] if default_snmp else []
+    rows = (
+        await session.execute(select(CredentialProfileModel).where(CredentialProfileModel.id.in_(profile_ids)))
+    ).scalars().all()
+    non_snmp: dict[str, Any] = {}
+    snmp_candidates: list[dict[str, Any]] = []
+    for row in rows:
+        plaintext = vault.decrypt(row.ciphertext, row.nonce, key_version=row.key_version)
+        payload = json.loads(plaintext.decode("utf-8"))
+        if row.protocol.startswith("snmp"):
+            snmp_candidates.append({"snmp": payload, "_profile_id": str(row.id)})
+        else:
+            merge_profile_payload(non_snmp, row.protocol, payload)
+    if not snmp_candidates and default_snmp:
+        snmp_candidates.append({"snmp": {"community": "public", "version": 2}})
+    return [{**non_snmp, **cand} for cand in snmp_candidates]
+
+
 async def load_device_credentials(
     session: AsyncSession,
     vault: AesGcmSecretVault,
