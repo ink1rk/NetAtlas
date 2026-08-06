@@ -16,15 +16,15 @@
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.4rem 0.75rem;
+  padding: 0.4rem 0.8rem;
   border-radius: var(--na-radius-md);
-  border: 1px solid var(--na-border);
-  background: var(--na-bg-card);
+  border: 1px solid var(--na-glass-border);
+  background: var(--na-glass-bg);
   color: var(--na-text-muted);
   font-size: var(--na-text-xs);
   font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  transition: border-color var(--na-duration-fast), background var(--na-duration-fast);
 }
 
 .disc-step-pill__num {
@@ -40,7 +40,7 @@
 }
 
 .disc-step-pill.is-active {
-  border-color: rgba(0, 184, 255, 0.45);
+  border-color: rgba(41, 182, 255, 0.45);
   color: var(--na-text);
   background: var(--na-accent-soft);
 }
@@ -61,10 +61,17 @@
 }
 
 .disc-panel {
-  background: var(--na-bg-card);
-  border: 1px solid var(--na-border);
+  background: var(--na-glass-bg);
+  backdrop-filter: blur(var(--na-glass-blur-sm));
+  -webkit-backdrop-filter: blur(var(--na-glass-blur-sm));
+  border: 1px solid var(--na-glass-border);
   border-radius: var(--na-radius-lg);
   overflow: hidden;
+  transition: border-color var(--na-duration-base);
+}
+
+.disc-panel:hover {
+  border-color: var(--na-glass-border-hover);
 }
 
 .disc-panel__head {
@@ -72,20 +79,21 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.9rem 1.1rem;
+  padding: 0.95rem 1.15rem;
   border-bottom: 1px solid var(--na-border-subtle);
-  background: linear-gradient(180deg, rgba(22, 32, 51, 0.65), transparent);
+  background: var(--na-glass-highlight);
 }
 
 .disc-panel__head h3 {
   margin: 0;
   font-size: var(--na-text-md);
   font-weight: 600;
+  letter-spacing: -0.005em;
   color: var(--na-text);
 }
 
 .disc-panel__body {
-  padding: 1.1rem;
+  padding: 1.15rem;
 }
 
 .disc-panel__body--flush {
@@ -107,25 +115,17 @@
 
 .disc-field .form-control,
 .disc-field .form-select {
-  background-color: #0B1220 !important;
-  color: #F1F5F9 !important;
-  -webkit-text-fill-color: #F1F5F9;
-  border-color: #334155;
+  background-color: var(--na-color-surface-1) !important;
+  color: var(--na-text) !important;
+  -webkit-text-fill-color: var(--na-text);
+  border-color: var(--na-border);
   font-family: var(--na-font-mono, 'JetBrains Mono', monospace);
   font-size: 0.875rem;
 }
 
-[data-theme="light"] .disc-field .form-control,
-[data-theme="light"] .disc-field .form-select {
-  background-color: #FFFFFF !important;
-  color: #0F172A !important;
-  -webkit-text-fill-color: #0F172A;
-  border-color: #CBD5E1;
-}
-
 .disc-field .form-control::placeholder {
-  color: #64748B !important;
-  -webkit-text-fill-color: #64748B;
+  color: var(--na-text-dim) !important;
+  -webkit-text-fill-color: var(--na-text-dim);
 }
 
 .disc-mode-grid {
@@ -142,23 +142,24 @@
 .disc-mode {
   position: relative;
   display: block;
-  padding: 0.85rem 0.9rem;
-  border: 1px solid var(--na-border);
+  padding: 0.9rem 0.95rem;
+  border: 1px solid var(--na-glass-border);
   border-radius: var(--na-radius-md);
-  background: var(--na-bg-surface);
+  background: var(--na-glass-bg-soft);
   cursor: pointer;
-  transition: border-color 140ms ease, background 140ms ease;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
 }
 
 .disc-mode:hover {
   border-color: var(--na-border-strong);
   background: var(--na-bg-hover);
+  transform: translateY(-1px);
 }
 
 .disc-mode:has(input:checked) {
-  border-color: rgba(0, 184, 255, 0.55);
+  border-color: rgba(41, 182, 255, 0.55);
   background: var(--na-accent-soft);
-  box-shadow: inset 0 0 0 1px rgba(0, 184, 255, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(41, 182, 255, 0.2);
 }
 
 .disc-mode input {
@@ -179,7 +180,7 @@
   display: block;
   font-size: var(--na-text-xs);
   color: var(--na-text-muted);
-  line-height: 1.35;
+  line-height: 1.4;
 }
 
 .disc-seed-list {
@@ -194,10 +195,15 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.7rem 0.8rem;
+  padding: 0.72rem 0.85rem;
   border: 1px solid var(--na-border-subtle);
   border-radius: var(--na-radius-md);
-  background: var(--na-bg-surface);
+  background: var(--na-glass-bg-soft);
+  transition: border-color var(--na-duration-fast);
+}
+
+.disc-seed:hover {
+  border-color: var(--na-glass-border-hover);
 }
 
 .disc-seed__main {
@@ -229,9 +235,9 @@
 }
 
 .disc-alert {
-  padding: 0.75rem 0.9rem;
+  padding: 0.8rem 0.95rem;
   border-radius: var(--na-radius-md);
-  border: 1px solid rgba(255, 184, 77, 0.35);
+  border: 1px solid rgba(251, 176, 59, 0.35);
   background: var(--na-warning-soft);
   color: var(--na-text-secondary);
   font-size: var(--na-text-xs);
@@ -246,24 +252,23 @@
 
 .disc-job-table th {
   text-align: left;
-  padding: 0.7rem 0.9rem;
+  padding: 0.75rem 0.9rem;
   color: var(--na-text-muted);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  border-bottom: 1px solid var(--na-border);
-  background: rgba(15, 23, 42, 0.45);
+  letter-spacing: 0.01em;
+  border-bottom: 1px solid var(--na-border-subtle);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .disc-job-table td {
-  padding: 0.8rem 0.9rem;
+  padding: 0.85rem 0.9rem;
   border-bottom: 1px solid var(--na-border-subtle);
   color: var(--na-text-secondary);
   vertical-align: middle;
 }
 
 .disc-job-table tr.is-live {
-  background: rgba(0, 184, 255, 0.06);
+  background: rgba(41, 182, 255, 0.06);
 }
 
 .disc-progress {
@@ -293,23 +298,30 @@
 }
 
 .disc-metric {
-  padding: 0.85rem;
+  padding: 0.9rem;
   border-radius: var(--na-radius-md);
-  border: 1px solid var(--na-border);
-  background: var(--na-bg-surface);
+  border: 1px solid var(--na-glass-border);
+  background: var(--na-glass-bg-soft);
+  transition: border-color var(--na-duration-fast), transform var(--na-duration-fast);
+}
+
+.disc-metric:hover {
+  border-color: var(--na-glass-border-hover);
+  transform: translateY(-1px);
 }
 
 .disc-metric__label {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
   color: var(--na-text-muted);
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.3rem;
 }
 
 .disc-metric__value {
-  font-size: 1.35rem;
+  font-size: 1.45rem;
   font-weight: 650;
+  letter-spacing: -0.01em;
   color: var(--na-text);
   font-variant-numeric: tabular-nums;
 }
