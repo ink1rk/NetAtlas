@@ -2,6 +2,40 @@
 
 All notable changes to NetAtlas are documented in this file.
 
+## [1.3.0] - 2026-08-06
+
+### Added — Enterprise Analysis Platform
+
+- **Smart Discovery persistence unlock**: FDB, ARP, LLDP/CDP neighbors and per-device VLANs
+  are now written to the database on every discovery run (`/devices/{id}/{fdb,arp,neighbors}`
+  previously read from tables nothing ever populated).
+- **`scan_mode` is now honored**: `fast` skips adjacency collection for a quick sweep,
+  `topology` collects adjacency without full VLAN/route persistence, `deep` does everything.
+- **Unknown Device fallback**: hosts that answer ICMP but no collector (SNMP/SSH) can reach
+  are still recorded, classified by MAC OUI + reverse DNS (`device_class`, `oui_vendor`).
+- **Credential Manager rotation**: discovery now tries each attached SNMP profile in turn
+  until one authenticates, and records the winning profile on the device
+  (`attributes.verified_credential_profile_id`).
+- **Interface-centric Link model**: `media`, `link_status`, `crc_errors`, `drops`,
+  `rx/tx_utilization_pct`, SFP vendor/model/serial, optical power, temperature, voltage —
+  architecture ready, populated as vendor telemetry becomes available.
+- **Link Health engine** (`domain/services/LinkHealthScorer`): healthy/warning/critical based
+  on interface state, duplex mismatch, CRC/drops (SNMP IF-MIB per-interface counters), optical
+  power and temperature. Surfaced on `/topology/graph`, `/topology/links`, and the new
+  `GET /topology/links/{id}` connection card.
+- **Mikrotik Bridge View**: bridge/bridge-port/bridge-VLAN parsing (PVID, tagged/untagged,
+  RSTP) via `GET /devices/{id}/bridge`.
+- **Printer Discovery**: CMYK + waste toner, paper tray status, total page count, and
+  Printer-MIB error flags for Kyocera (`GET /devices/{id}/printer`); printer badge + accent
+  on the topology map.
+- **Trace Engine expansion**: `GET /trace/device`, `GET /trace/vlan/{id}` alongside the
+  existing `GET /trace/mac` (which now also traces IP/hostname).
+- **VLAN Explorer polish**: tagged vs. untagged port breakdown, editable gateway/prefix
+  (`PATCH /vlans/{id}`), rendered in the NOC workspace and global search.
+- **Trigger pack**: Interface CRC/Drops thresholds, High Temperature, Low Toner, Paper
+  Empty, Device Offline (new `device_status` trigger kind), Optical RX Low.
+- OUI vendor lookup table + device-type heuristics (`infrastructure/collectors/base/oui.py`).
+
 ## [1.2.0] - 2026-08-06
 
 ### Added
