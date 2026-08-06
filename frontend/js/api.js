@@ -136,6 +136,8 @@ const Api = (() => {
     listJobs: () => request('/discovery/jobs'),
     startJob: (data) => request('/discovery/jobs', { method: 'POST', body: JSON.stringify(data || {}) }),
     getJob: (id) => request(`/discovery/jobs/${id}`),
+    cancelJob: (id) => request(`/discovery/jobs/${id}/cancel`, { method: 'POST', body: '{}' }),
+    retryJob: (id) => request(`/discovery/jobs/${id}/retry`, { method: 'POST', body: '{}' }),
 
     listSnapshots: () => request('/snapshots'),
     getSnapshot: (id) => request(`/snapshots/${id}`),

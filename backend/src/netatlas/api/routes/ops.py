@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import json
+import logging
 from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +35,8 @@ from netatlas.infrastructure.persistence.repositories import (
     SqlAlchemySnapshotRepository,
 )
 from netatlas.infrastructure.security.vault import AesGcmSecretVault
+
+logger = logging.getLogger(__name__)
 
 discovery_router = APIRouter(prefix="/discovery", tags=["discovery"])
 snapshots_router = APIRouter(prefix="/snapshots", tags=["snapshots"])
@@ -149,9 +153,29 @@ async def list_jobs(
     return [_job_dict(j) for j in jobs]
 
 
+def _enqueue_discovery(job_id: UUID) -> tuple[str, str | None]:
+    """Try Celery first; return (dispatch_mode, celery_task_id)."""
+    from netatlas.workers.tasks import run_discovery_job
+
+    async_result = run_discovery_job.delay(str(job_id))
+    return "celery", getattr(async_result, "id", None)
+
+
+async def _run_discovery_inline(job_id: UUID) -> None:
+    """Background fallback when Celery/broker is unavailable."""
+    try:
+        from netatlas.workers.celery_app import _run_discovery
+
+        await _run_discovery(job_id)
+        logger.info("Inline discovery completed job=%s", job_id)
+    except Exception:
+        logger.exception("Inline discovery failed job=%s", job_id)
+
+
 @discovery_router.post("/jobs", status_code=202)
 async def start_job(
     body: JobCreate,
+    background_tasks: BackgroundTasks,
     session: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
     _user: Annotated[Any, Depends(require_permission("discovery:write"))],
@@ -179,17 +203,32 @@ async def start_job(
         },
         stats={},
     )
-    await SqlAlchemyDiscoveryJobRepository(session).add(job)
+    repo = SqlAlchemyDiscoveryJobRepository(session)
+    await repo.add(job)
     await session.commit()
-    # Enqueue celery task when broker available; also support inline for dev.
-    try:
-        from netatlas.workers.tasks import run_discovery_job
 
-        run_discovery_job.delay(str(job.id))
-    except Exception:
-        # Fallback: mark pending; operator can run worker
-        pass
-    return _job_dict(job)
+    dispatch = "pending"
+    task_id: str | None = None
+    try:
+        dispatch, task_id = await asyncio.to_thread(_enqueue_discovery, job.id)
+        logger.info("Discovery job enqueued job=%s celery_id=%s", job.id, task_id)
+    except Exception as exc:
+        logger.warning(
+            "Celery enqueue failed job=%s (%s) — falling back to inline background run",
+            job.id,
+            exc,
+        )
+        dispatch = "inline"
+        background_tasks.add_task(_run_discovery_inline, job.id)
+
+    if task_id or dispatch == "inline":
+        job.config = {**(job.config or {}), "celery_task_id": task_id, "dispatch": dispatch}
+        await repo.update(job)
+        await session.commit()
+
+    payload = _job_dict(job)
+    payload["dispatch"] = dispatch
+    return payload
 
 
 @discovery_router.get("/jobs/{job_id}")
@@ -204,19 +243,99 @@ async def get_job(
     return _job_dict(job)
 
 
+@discovery_router.post("/jobs/{job_id}/cancel", status_code=200)
+async def cancel_job(
+    job_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    _user: Annotated[Any, Depends(require_permission("discovery:write"))],
+) -> dict[str, Any]:
+    repo = SqlAlchemyDiscoveryJobRepository(session)
+    job = await repo.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status not in {JobStatus.PENDING, JobStatus.RUNNING}:
+        raise HTTPException(status_code=409, detail=f"Job already {job.status.value}")
+
+    task_id = (job.config or {}).get("celery_task_id")
+    if task_id:
+        try:
+            from netatlas.workers.celery_app import celery_app
+
+            celery_app.control.revoke(str(task_id), terminate=True, signal="SIGTERM")
+            logger.info("Revoked celery task %s for job %s", task_id, job_id)
+        except Exception as exc:
+            logger.warning("Celery revoke failed job=%s: %s", job_id, exc)
+
+    job.status = JobStatus.CANCELLED
+    job.finished_at = datetime.now(UTC)
+    job.error = "Cancelled by operator"
+    job.config = {**(job.config or {}), "cancelled": True}
+    await repo.update(job)
+    await session.commit()
+    return _job_dict(job)
+
+
+@discovery_router.post("/jobs/{job_id}/retry", status_code=202)
+async def retry_job(
+    job_id: UUID,
+    background_tasks: BackgroundTasks,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    _user: Annotated[Any, Depends(require_permission("discovery:write"))],
+) -> dict[str, Any]:
+    """Re-dispatch a stuck pending/failed/cancelled job with the same config."""
+    repo = SqlAlchemyDiscoveryJobRepository(session)
+    job = await repo.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status == JobStatus.RUNNING:
+        raise HTTPException(status_code=409, detail="Job is already running")
+
+    job.status = JobStatus.PENDING
+    job.started_at = None
+    job.finished_at = None
+    job.error = None
+    job.stats = {}
+    # Operator retry always runs inline to unblock stuck queue/worker cases
+    job.config = {**(job.config or {}), "dispatch": "inline", "cancelled": False, "celery_task_id": None}
+    await repo.update(job)
+    await session.commit()
+    background_tasks.add_task(_run_discovery_inline, job.id)
+    logger.info("Discovery job retry via inline job=%s", job.id)
+    payload = _job_dict(job)
+    payload["dispatch"] = "inline"
+    return payload
+
+
 def _job_dict(job: DiscoveryJob) -> dict[str, Any]:
+    stats = job.stats or {}
+    targets = int(stats.get("targets") or 0)
+    scanned = int(stats.get("scanned") or 0)
+    # Progress heuristic for UI
+    progress = 0
+    if job.status == JobStatus.COMPLETED:
+        progress = 100
+    elif job.status == JobStatus.CANCELLED:
+        progress = min(99, int((scanned / targets) * 100)) if targets else 0
+    elif job.status == JobStatus.RUNNING and targets > 0:
+        progress = min(99, max(1, int((scanned / targets) * 100)))
+    elif job.status == JobStatus.RUNNING:
+        progress = 15
+    elif job.status == JobStatus.PENDING:
+        progress = 0
     return {
         "id": str(job.id),
         "status": job.status.value,
         "started_at": job.started_at.isoformat() if job.started_at else None,
         "finished_at": job.finished_at.isoformat() if job.finished_at else None,
-        "stats": job.stats,
+        "stats": stats,
         "error": job.error,
+        "progress": progress,
         "config": {
             "scan_mode": (job.config or {}).get("scan_mode"),
             "seed_ids": (job.config or {}).get("seed_ids") or [],
             "topology_discovery": (job.config or {}).get("topology_discovery"),
             "deep_scan": (job.config or {}).get("deep_scan"),
+            "dispatch": (job.config or {}).get("dispatch"),
         },
     }
 

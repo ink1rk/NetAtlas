@@ -1,0 +1,315 @@
+/* Discovery Wizard — enterprise ops surface */
+
+.disc-wizard {
+  display: grid;
+  gap: 1rem;
+}
+
+.disc-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.disc-step-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--na-radius-md);
+  border: 1px solid var(--na-border);
+  background: var(--na-bg-card);
+  color: var(--na-text-muted);
+  font-size: var(--na-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.disc-step-pill__num {
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--na-bg-hover);
+  color: var(--na-text-secondary);
+  font-size: 0.7rem;
+}
+
+.disc-step-pill.is-active {
+  border-color: rgba(0, 184, 255, 0.45);
+  color: var(--na-text);
+  background: var(--na-accent-soft);
+}
+
+.disc-step-pill.is-active .disc-step-pill__num {
+  background: var(--na-accent);
+  color: #041018;
+}
+
+.disc-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.35fr);
+  gap: 1rem;
+}
+
+@media (max-width: 992px) {
+  .disc-grid { grid-template-columns: 1fr; }
+}
+
+.disc-panel {
+  background: var(--na-bg-card);
+  border: 1px solid var(--na-border);
+  border-radius: var(--na-radius-lg);
+  overflow: hidden;
+}
+
+.disc-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1.1rem;
+  border-bottom: 1px solid var(--na-border-subtle);
+  background: linear-gradient(180deg, rgba(22, 32, 51, 0.65), transparent);
+}
+
+.disc-panel__head h3 {
+  margin: 0;
+  font-size: var(--na-text-md);
+  font-weight: 600;
+  color: var(--na-text);
+}
+
+.disc-panel__body {
+  padding: 1.1rem;
+}
+
+.disc-panel__body--flush {
+  padding: 0;
+}
+
+.disc-field {
+  margin-bottom: 0.85rem;
+}
+
+.disc-field label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: var(--na-text-xs);
+  font-weight: 600;
+  color: var(--na-text-secondary);
+  letter-spacing: 0.01em;
+}
+
+.disc-field .form-control,
+.disc-field .form-select {
+  background-color: #0B1220 !important;
+  color: #F1F5F9 !important;
+  -webkit-text-fill-color: #F1F5F9;
+  border-color: #334155;
+  font-family: var(--na-font-mono, 'JetBrains Mono', monospace);
+  font-size: 0.875rem;
+}
+
+[data-theme="light"] .disc-field .form-control,
+[data-theme="light"] .disc-field .form-select {
+  background-color: #FFFFFF !important;
+  color: #0F172A !important;
+  -webkit-text-fill-color: #0F172A;
+  border-color: #CBD5E1;
+}
+
+.disc-field .form-control::placeholder {
+  color: #64748B !important;
+  -webkit-text-fill-color: #64748B;
+}
+
+.disc-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 700px) {
+  .disc-mode-grid { grid-template-columns: 1fr; }
+}
+
+.disc-mode {
+  position: relative;
+  display: block;
+  padding: 0.85rem 0.9rem;
+  border: 1px solid var(--na-border);
+  border-radius: var(--na-radius-md);
+  background: var(--na-bg-surface);
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.disc-mode:hover {
+  border-color: var(--na-border-strong);
+  background: var(--na-bg-hover);
+}
+
+.disc-mode:has(input:checked) {
+  border-color: rgba(0, 184, 255, 0.55);
+  background: var(--na-accent-soft);
+  box-shadow: inset 0 0 0 1px rgba(0, 184, 255, 0.2);
+}
+
+.disc-mode input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.disc-mode__title {
+  display: block;
+  font-size: var(--na-text-sm);
+  font-weight: 600;
+  color: var(--na-text);
+  margin-bottom: 0.2rem;
+}
+
+.disc-mode__desc {
+  display: block;
+  font-size: var(--na-text-xs);
+  color: var(--na-text-muted);
+  line-height: 1.35;
+}
+
+.disc-seed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.disc-seed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--na-border-subtle);
+  border-radius: var(--na-radius-md);
+  background: var(--na-bg-surface);
+}
+
+.disc-seed__main {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.disc-seed__main input {
+  accent-color: var(--na-accent);
+}
+
+.disc-seed__cidr {
+  font-family: var(--na-font-mono, 'JetBrains Mono', monospace);
+  font-size: 0.85rem;
+  color: var(--na-accent-bright);
+}
+
+.disc-seed__label {
+  font-size: var(--na-text-xs);
+  color: var(--na-text-muted);
+}
+
+.disc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.disc-alert {
+  padding: 0.75rem 0.9rem;
+  border-radius: var(--na-radius-md);
+  border: 1px solid rgba(255, 184, 77, 0.35);
+  background: var(--na-warning-soft);
+  color: var(--na-text-secondary);
+  font-size: var(--na-text-xs);
+  margin-bottom: 0.85rem;
+}
+
+.disc-job-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--na-text-xs);
+}
+
+.disc-job-table th {
+  text-align: left;
+  padding: 0.7rem 0.9rem;
+  color: var(--na-text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--na-border);
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.disc-job-table td {
+  padding: 0.8rem 0.9rem;
+  border-bottom: 1px solid var(--na-border-subtle);
+  color: var(--na-text-secondary);
+  vertical-align: middle;
+}
+
+.disc-job-table tr.is-live {
+  background: rgba(0, 184, 255, 0.06);
+}
+
+.disc-progress {
+  width: 110px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--na-bg-hover);
+  overflow: hidden;
+}
+
+.disc-progress__bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--na-accent-dim), var(--na-accent-bright));
+  transition: width 280ms ease;
+}
+
+.disc-job-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.disc-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.disc-metric {
+  padding: 0.85rem;
+  border-radius: var(--na-radius-md);
+  border: 1px solid var(--na-border);
+  background: var(--na-bg-surface);
+}
+
+.disc-metric__label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--na-text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.disc-metric__value {
+  font-size: 1.35rem;
+  font-weight: 650;
+  color: var(--na-text);
+  font-variant-numeric: tabular-nums;
+}

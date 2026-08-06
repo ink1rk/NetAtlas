@@ -243,8 +243,11 @@ a.btn-na {
   padding: 0 var(--na-space-3);
   border: 1px solid var(--na-color-border);
   border-radius: var(--na-radius-md);
-  background: var(--na-color-surface-1);
-  color: var(--na-color-text);
+  background-color: var(--na-color-surface-1) !important;
+  background-image: none;
+  color: var(--na-color-text) !important;
+  -webkit-text-fill-color: var(--na-color-text);
+  caret-color: var(--na-accent);
   font-family: var(--na-font-sans);
   font-size: var(--na-text-sm);
   line-height: var(--na-leading-normal);
@@ -264,6 +267,8 @@ textarea.form-control {
 .na-input::placeholder,
 .form-control::placeholder {
   color: var(--na-color-text-muted);
+  -webkit-text-fill-color: var(--na-color-text-muted);
+  opacity: 1;
 }
 
 .na-input:hover,
@@ -281,7 +286,20 @@ textarea.form-control {
   outline: none;
   border-color: var(--na-color-border-focus);
   box-shadow: var(--na-focus-ring);
-  background: var(--na-color-surface-2);
+  background-color: var(--na-color-surface-2) !important;
+  color: var(--na-color-text) !important;
+  -webkit-text-fill-color: var(--na-color-text);
+}
+
+/* Chrome/Safari autofill — keep enterprise contrast */
+.form-control:-webkit-autofill,
+.form-control:-webkit-autofill:hover,
+.form-control:-webkit-autofill:focus,
+.na-input:-webkit-autofill {
+  -webkit-text-fill-color: var(--na-color-text) !important;
+  caret-color: var(--na-accent);
+  box-shadow: 0 0 0 1000px var(--na-color-surface-1) inset !important;
+  transition: background-color 99999s ease-in-out 0s;
 }
 
 .na-input:disabled,
