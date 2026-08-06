@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=rel1">
-  <link rel="stylesheet" href="/css/discovery.css?v=rel1">
+  <link rel="stylesheet" href="/css/app.css?v=snmp1">
+  <link rel="stylesheet" href="/css/discovery.css?v=snmp1">
   <script>
     try {
       var t = localStorage.getItem('netatlas_theme');
@@ -21,11 +21,11 @@
 </head>
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
-  <script src="/js/i18n.js?v=rel1"></script>
-  <script src="/js/api.js?v=rel1"></script>
-  <script src="/js/auth.js?v=rel1"></script>
-  <script src="/js/ui.js?v=rel1"></script>
-  <script src="/js/app.js?v=rel1"></script>
+  <script src="/js/i18n.js?v=snmp1"></script>
+  <script src="/js/api.js?v=snmp1"></script>
+  <script src="/js/auth.js?v=snmp1"></script>
+  <script src="/js/ui.js?v=snmp1"></script>
+  <script src="/js/app.js?v=snmp1"></script>
   <script>
     const PRESETS = [
       { value: '10.0.0.0/8', label: '10.0.0.0/8' },
@@ -74,6 +74,7 @@
                     <label>${I18n.t('disc.cred_profiles')}</label>
                     <div id="seed-cred-list" class="disc-seed-list"></div>
                     <p class="form-hint mt-1"><a href="/pages/credentials.html">${I18n.t('nav.credentials')}</a> — ${I18n.t('disc.credentials_hint')}</p>
+                    <button type="button" class="btn-na btn-na-secondary btn-sm mt-2" id="btn-attach-creds-seeds">${I18n.t('disc.attach_creds_seeds')}</button>
                   </div>
                   <button type="submit" class="btn-na btn-na-primary">${I18n.t('disc.add_seed')}</button>
                 </form>
@@ -169,6 +170,10 @@
       });
 
       async function startWithMode(seedIds) {
+        if (!credentialProfiles.length) {
+          Ui.toast(I18n.t('disc.warn_no_creds'), 'error');
+          return;
+        }
         const mode = document.querySelector('input[name="scan_mode"]:checked')?.value || 'deep';
         const body = { scan_mode: mode };
         if (seedIds) body.seed_ids = seedIds;
@@ -186,6 +191,21 @@
         const ids = [...document.querySelectorAll('.seed-check:checked')].map((el) => el.value);
         if (!ids.length) { Ui.toast(I18n.t('disc.select_seeds'), 'info'); return; }
         try { await startWithMode(ids); } catch (err) { Ui.toast(err.message, 'error'); }
+      });
+
+      document.getElementById('btn-attach-creds-seeds')?.addEventListener('click', async () => {
+        const ids = [...document.querySelectorAll('.seed-cred-check:checked')].map((el) => el.value);
+        if (!ids.length) { Ui.toast(I18n.t('disc.select_creds'), 'info'); return; }
+        try {
+          const seeds = await Api.listSeeds();
+          if (!seeds?.length) { Ui.toast(I18n.t('disc.no_seeds'), 'info'); return; }
+          await Promise.all(seeds.map((s) => {
+            const merged = [...new Set([...(s.credential_profile_ids || []), ...ids])];
+            return Api.updateSeed(s.id, { credential_profile_ids: merged });
+          }));
+          Ui.toast(I18n.t('disc.creds_attached'), 'ok');
+          loadSeeds();
+        } catch (err) { Ui.toast(err.message, 'error'); }
       });
 
       document.getElementById('btn-refresh-jobs').addEventListener('click', () => loadJobs());
@@ -208,17 +228,20 @@
           el.innerHTML = `<div class="form-hint">${I18n.t('disc.cred_none')}</div>`;
           return;
         }
-        el.innerHTML = credentialProfiles.map((c) => `
+        // Pre-check SNMP profiles so new seeds authenticate by default.
+        el.innerHTML = credentialProfiles.map((c) => {
+          const snmp = String(c.protocol || '').startsWith('snmp');
+          return `
           <label class="disc-seed" style="cursor:pointer">
             <span class="disc-seed__main">
-              <input type="checkbox" class="seed-cred-check" value="${App.escapeHtml(c.id)}">
+              <input type="checkbox" class="seed-cred-check" value="${App.escapeHtml(c.id)}"${snmp ? ' checked' : ''}>
               <span>
                 <div class="disc-seed__cidr">${App.escapeHtml(c.name)}</div>
                 <div class="disc-seed__label">${App.escapeHtml(c.protocol)}</div>
               </span>
             </span>
-          </label>
-        `).join('');
+          </label>`;
+        }).join('');
       } catch {
         el.innerHTML = `<div class="form-hint">${I18n.t('disc.cred_none')}</div>`;
       }

@@ -656,7 +656,10 @@ async def assign_credentials_bulk(
     session: Annotated[AsyncSession, Depends(get_db)],
     _user: Annotated[Any, Depends(require_permission("credentials:write"))],
 ) -> dict[str, Any]:
-    from netatlas.infrastructure.security.credential_resolver import bind_device_credentials
+    from netatlas.infrastructure.security.credential_resolver import (
+        bind_device_credentials,
+        bind_profiles_to_all_seeds,
+    )
 
     device_ids = list(body.device_ids)
     if body.all_devices:
@@ -666,8 +669,14 @@ async def assign_credentials_bulk(
     linked = 0
     for did in device_ids:
         linked += await bind_device_credentials(session, did, body.credential_profile_ids)
+    # Also attach to discovery seeds — otherwise next discovery still tries only `public`.
+    seeds_updated = await bind_profiles_to_all_seeds(session, body.credential_profile_ids)
     await session.commit()
-    return {"devices": len(device_ids), "links_created": linked}
+    return {
+        "devices": len(device_ids),
+        "links_created": linked,
+        "seeds_updated": seeds_updated,
+    }
 
 
 @system_router.get("/healthz")

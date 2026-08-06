@@ -36,11 +36,11 @@ if [[ "${ok}" -ne 1 ]]; then
 fi
 
 echo "[netatlas] Verifying UI…"
-if curl -sk "https://127.0.0.1/js/i18n.js?v=rel1" | grep -q "NetAtlas i18n"; then
-  echo "[netatlas] OK — API healthy, Design System v2 UI live (RU/EN)"
+if curl -sk "https://127.0.0.1/js/i18n.js?v=snmp1" | grep -q "NetAtlas i18n"; then
+  echo "[netatlas] OK — API healthy, SNMP discovery fix UI live (RU/EN)"
 else
   echo "[netatlas] WARN — i18n.js not served yet; check: docker compose logs frontend"
   exit 1
 fi
 
-echo "[netatlas] Update complete — NetAtlas 1.3.0"
+echo "[netatlas] Update complete — NetAtlas 1.3.1"

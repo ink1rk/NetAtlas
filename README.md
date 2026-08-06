@@ -67,7 +67,7 @@ Open `https://<server>/` and sign in as `admin`. The initial password is written
 curl -fsSL https://raw.githubusercontent.com/ink1rk/NetAtlas/main/update.sh | sudo bash
 ```
 
-Pulls `main`, rebuilds API + frontend, recreates the stack. Current release: **1.3.0**.
+Pulls `main`, rebuilds API + frontend, recreates the stack. Current release: **1.3.1**.
 
 ## Local development
 

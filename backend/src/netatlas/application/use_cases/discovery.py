@@ -50,11 +50,35 @@ _MODE_ADJACENCY = {"deep", "topology"}  # neighbors/FDB/ARP for link building
 _MODE_FULL_DETAIL = {"deep"}  # VLANs, routes, interface persistence detail
 
 
+_EMPTY_SNMP = (
+    "",
+    "none",
+    "unknown",
+    "nosuchobject",
+    "nosuchinstance",
+    "endofmibview",
+    "no such object currently exists at this oid",
+    "no such instance currently exists at this oid",
+)
+
+
+def _snmp_empty(value: Any) -> bool:
+    text = str(value or "").strip().lower()
+    return text in _EMPTY_SNMP or text.startswith("no such ")
+
+
 def _is_generic_signal(inventory: Any) -> bool:
     """True when a collector returned essentially no usable signal (SNMP closed)."""
     vendor = str(getattr(inventory, "vendor", "") or "").lower()
     model = str(getattr(inventory, "model", "") or "").lower()
-    return vendor in {"generic", "unknown", ""} and model in {"unknown", ""} and not inventory.interfaces
+    if _snmp_empty(model):
+        model = "unknown"
+    named_ifaces = [
+        i
+        for i in (getattr(inventory, "interfaces", None) or [])
+        if isinstance(i, dict) and str(i.get("name") or "").strip() and not _snmp_empty(i.get("name"))
+    ]
+    return vendor in {"generic", "unknown", ""} and model in {"unknown", ""} and not named_ifaces
 
 
 _FIBER_HINTS = ("sfp", "fiber", "tengig", "twentyfive", "fortygig", "hundredgig", "gpon", "dwdm")
@@ -200,10 +224,22 @@ class DiscoveryOrchestrator:
                         collection_failed = True
 
                     if collection_failed:
+                        logger.warning(
+                            "No SNMP inventory for ip=%s (fingerprint=%s) — Unknown Device; "
+                            "check SNMPv2 community / UDP 161 / seed credentials",
+                            target,
+                            bool(fingerprint.sys_descr),
+                        )
                         device = await self._create_unknown_device(target, inventory)
                         job.stats["unknown_devices"] = int(job.stats.get("unknown_devices", 0)) + 1
                         device = await self._devices.upsert_by_identity(device)
                         device_index[target] = device
+                        # Still bind credentials so metrics / next rediscovery can authenticate.
+                        if self._on_device:
+                            try:
+                                await self._on_device(device, seeds)
+                            except Exception:
+                                logger.exception("on_device callback failed ip=%s", target)
                         job.stats["inventoried"] = int(job.stats.get("inventoried", 0)) + 1
                         await self._jobs.update(job)
                         await self._emit(

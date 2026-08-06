@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import String, cast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -254,25 +254,17 @@ async def metrics_catalog(
 
 @router.post("/monitoring/collect-now", status_code=202)
 async def collect_metrics_now(
-    background_tasks: BackgroundTasks,
     _user: Annotated[Any, Depends(require_permission("monitoring:read"))],
 ) -> dict[str, Any]:
-    """Kick an immediate metrics sweep (does not wait for Celery beat)."""
+    """Immediate metrics sweep + identity enrichment for Unknown Device stubs.
 
-    async def _run() -> None:
-        from netatlas.workers.celery_app import _collect_metrics
+    Runs inline so SNMPv2 profiles assigned after discovery can fill hostname /
+    vendor / model / interfaces without waiting for Celery beat.
+    """
+    from netatlas.workers.celery_app import _collect_metrics
 
-        await _collect_metrics()
-
-    # Prefer Celery when available
-    try:
-        from netatlas.workers.tasks import collect_metrics
-
-        collect_metrics.delay()
-        return {"status": "queued", "dispatch": "celery"}
-    except Exception:
-        background_tasks.add_task(_run)
-        return {"status": "queued", "dispatch": "inline"}
+    stats = await _collect_metrics()
+    return {"status": "completed", "dispatch": "inline", **stats}
 
 
 @router.get("/devices/{device_id}/neighbors")

@@ -339,6 +339,28 @@ async def test_unknown_device_created_when_collector_has_no_signal(monkeypatch: 
 
 
 @pytest.mark.asyncio
+async def test_unknown_device_still_binds_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SNMP-closed hosts must still get credential profiles for later enrichment."""
+    monkeypatch.setattr(discovery_mod, "icmp_probe", _always_alive)
+    monkeypatch.setattr(discovery_mod, "resolve_local_mac", _fake_resolve_local_mac)
+    monkeypatch.setattr(discovery_mod, "reverse_dns", _fake_reverse_dns)
+    called: list[str] = []
+
+    async def on_device(device: Any, seeds: list[Any]) -> None:
+        called.append(str(device.management_ip))
+
+    orch, repos = _make_orchestrator(FakeGenericPlugin())
+    orch._on_device = on_device  # type: ignore[attr-defined]
+    job, seed = _job("fast")
+    repos["jobs"].jobs[job.id] = job
+    orch._seeds = FakeSeedRepo([seed])  # type: ignore[attr-defined]
+
+    result = await orch.run(job.id)
+    assert result.status == JobStatus.COMPLETED
+    assert called == ["10.0.0.1"]
+
+
+@pytest.mark.asyncio
 async def test_credential_rotation_picks_working_profile(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(discovery_mod, "icmp_probe", _always_alive)
 

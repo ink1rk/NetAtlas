@@ -10,6 +10,27 @@ from netatlas.infrastructure.security.readonly_guard import SnmpReadOnlyGuard
 
 logger = logging.getLogger(__name__)
 
+_SNMP_NULL_MARKERS = (
+    "nosuchobject",
+    "nosuchinstance",
+    "endofmibview",
+    "no such object currently exists at this oid",
+    "no such instance currently exists at this oid",
+)
+
+
+def _clean_snmp_value(raw: Any) -> str | None:
+    """Return None for SNMP null / exception syntax values from pysnmp."""
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    lowered = text.lower()
+    if lowered in _SNMP_NULL_MARKERS or lowered.startswith("no such "):
+        return None
+    return text
+
 
 class SnmpTransport:
     """Thin async wrapper that hard-blocks SNMP SET."""
@@ -90,9 +111,15 @@ class SnmpTransport:
         )
         error_indication, error_status, _error_index, var_binds = next(iterator)
         if error_indication or error_status:
-            logger.debug("SNMP GET failed host=%s oid=%s err=%s", host, oid, error_indication or error_status)
+            logger.info(
+                "SNMP GET failed host=%s oid=%s err=%s community=%s",
+                host,
+                oid,
+                error_indication or error_status,
+                community if version != 3 else "(v3)",
+            )
             return None
-        return str(var_binds[0][1])
+        return _clean_snmp_value(var_binds[0][1])
 
     def _sync_walk(
         self,
@@ -138,9 +165,18 @@ class SnmpTransport:
             lexicographicMode=False,
         ):
             if error_indication or error_status:
+                if not results:
+                    logger.info(
+                        "SNMP WALK failed host=%s oid=%s err=%s",
+                        host,
+                        oid,
+                        error_indication or error_status,
+                    )
                 break
             for name, val in var_binds:
-                results.append((str(name), str(val)))
+                cleaned = _clean_snmp_value(val)
+                if cleaned is not None:
+                    results.append((str(name), cleaned))
             if len(results) > 5000:
                 break
         return results
