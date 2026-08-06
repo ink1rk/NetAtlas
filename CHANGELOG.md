@@ -2,6 +2,16 @@
 
 All notable changes to NetAtlas are documented in this file.
 
+## [1.1.1] - 2026-08-06
+
+### Fixed
+- Discovery jobs no longer stick in PENDING when Celery/broker fails — inline background fallback
+- Dark theme form inputs: typed text contrast (Bootstrap `data-bs-theme` + hardened controls)
+
+### Added
+- Stop / Retry discovery jobs (`POST /discovery/jobs/{id}/cancel|retry`)
+- Enterprise Discovery Wizard UI with live progress
+
 ## [1.1.0] - 2026-08-04
 
 ### Added
