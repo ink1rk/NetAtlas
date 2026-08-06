@@ -37,6 +37,13 @@ class MikrotikCollector:
         facts = await snmp_inventory(ctx, vendor_hint="mikrotik")
         facts.platform = DevicePlatform.MIKROTIK
         facts.vendor = "mikrotik"
+        # SNMP-only: pull board name from sysDescr when ENTITY-MIB is empty.
+        if not facts.model or facts.model.lower() in {"unknown", "generic", ""}:
+            from netatlas.infrastructure.collectors.base.snmp_inventory import _model_from_sys_descr
+
+            parsed = _model_from_sys_descr(str((facts.attributes or {}).get("sys_descr") or facts.os_version or ""))
+            if parsed:
+                facts.model = parsed
         if ctx.ssh_exec and ctx.credentials.get("ssh"):
             ssh = ctx.credentials["ssh"]
 

@@ -35,6 +35,9 @@ SNMP_IP_NET_TO_MEDIA_PHYS = "1.3.6.1.2.1.4.22.1.2"
 SNMP_ENTITY_SERIAL = "1.3.6.1.2.1.47.1.1.1.1.11.1"
 SNMP_ENTITY_MODEL = "1.3.6.1.2.1.47.1.1.1.1.13.1"
 SNMP_ENTITY_FW = "1.3.6.1.2.1.47.1.1.1.1.10.1"
+SNMP_ENTITY_MODEL_TABLE = "1.3.6.1.2.1.47.1.1.1.1.13"
+SNMP_ENTITY_SERIAL_TABLE = "1.3.6.1.2.1.47.1.1.1.1.11"
+SNMP_ENTITY_FW_TABLE = "1.3.6.1.2.1.47.1.1.1.1.10"
 
 
 SnmpGet = Callable[..., Awaitable[str | None]]
@@ -53,6 +56,40 @@ def _cred_snmp(ctx: CollectorContext) -> dict[str, Any]:
     }
 
 
+async def _first_entity_value(
+    ctx: CollectorContext,
+    params: dict[str, Any],
+    scalar_oid: str,
+    table_oid: str,
+) -> str | None:
+    """ENTITY-MIB index `.1` is often empty on RouterOS — walk for first non-empty."""
+    assert ctx.snmp_get and ctx.snmp_walk
+    value = await ctx.snmp_get(ctx.target_ip, scalar_oid, **params)
+    if value:
+        return value
+    for _oid, val in await ctx.snmp_walk(ctx.target_ip, table_oid, **params):
+        if val and str(val).strip():
+            return str(val).strip()
+    return None
+
+
+def _model_from_sys_descr(sys_descr: str) -> str | None:
+    """Best-effort model parse from sysDescr (RouterOS CRS354-..., Eltex MES…)."""
+    import re
+
+    text = (sys_descr or "").strip()
+    if not text:
+        return None
+    # MikroTik: "RouterOS CRS354-48P-4S+2Q+" — no trailing \b (board names end with +).
+    m = re.search(r"(?i)\b((?:CRS|CCR|CSS|RB|C52i)\d[\w.+-]*)", text)
+    if m:
+        return m.group(1)
+    m = re.search(r"(?i)\b((?:MES|ESR)\d[\w+-]*)", text)
+    if m:
+        return m.group(1)
+    return None
+
+
 async def snmp_inventory(ctx: CollectorContext, *, vendor_hint: str = "unknown") -> InventoryFacts:
     assert ctx.snmp_get and ctx.snmp_walk
     params = _cred_snmp(ctx)
@@ -60,11 +97,16 @@ async def snmp_inventory(ctx: CollectorContext, *, vendor_hint: str = "unknown")
     sys_descr = await ctx.snmp_get(ctx.target_ip, SNMP_SYS_DESCR, **params) or ""
     sys_oid = await ctx.snmp_get(ctx.target_ip, SNMP_SYS_OBJECT_ID, **params)
     uptime_ticks = await ctx.snmp_get(ctx.target_ip, SNMP_SYS_UPTIME, **params)
-    serial = await ctx.snmp_get(ctx.target_ip, SNMP_ENTITY_SERIAL, **params)
-    model = await ctx.snmp_get(ctx.target_ip, SNMP_ENTITY_MODEL, **params) or "unknown"
-    firmware = await ctx.snmp_get(ctx.target_ip, SNMP_ENTITY_FW, **params)
+    serial = await _first_entity_value(ctx, params, SNMP_ENTITY_SERIAL, SNMP_ENTITY_SERIAL_TABLE)
+    model = await _first_entity_value(ctx, params, SNMP_ENTITY_MODEL, SNMP_ENTITY_MODEL_TABLE)
+    firmware = await _first_entity_value(ctx, params, SNMP_ENTITY_FW, SNMP_ENTITY_FW_TABLE)
+    if not model:
+        model = _model_from_sys_descr(sys_descr) or "unknown"
 
     names = {oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, SNMP_IF_NAME, **params)}
+    if not names:
+        # Some stacks only expose ifDescr
+        names = {oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, SNMP_IF_DESCR, **params)}
     descrs = {oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, SNMP_IF_DESCR, **params)}
     mtus = {oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, SNMP_IF_MTU, **params)}
     speeds = {oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, SNMP_IF_SPEED, **params)}
@@ -74,6 +116,8 @@ async def snmp_inventory(ctx: CollectorContext, *, vendor_hint: str = "unknown")
 
     interfaces: list[dict[str, Any]] = []
     for idx, name in names.items():
+        if not name or not str(name).strip():
+            continue
         try:
             speed = int(speeds.get(idx) or 0)
         except ValueError:
@@ -100,6 +144,13 @@ async def snmp_inventory(ctx: CollectorContext, *, vendor_hint: str = "unknown")
             }
         )
 
+    management_mac = None
+    for iface in interfaces:
+        mac = iface.get("mac")
+        if mac and mac != "00:00:00:00:00:00":
+            management_mac = mac
+            break
+
     from netatlas.domain.ports import DeviceFingerprint
 
     platform = fingerprint_platform(
@@ -120,7 +171,7 @@ async def snmp_inventory(ctx: CollectorContext, *, vendor_hint: str = "unknown")
         serial=serial,
         firmware=firmware,
         os_version=sys_descr[:255] if sys_descr else None,
-        management_mac=None,
+        management_mac=management_mac,
         platform=platform if platform != DevicePlatform.UNKNOWN else DevicePlatform.UNKNOWN,
         attributes={"sys_object_id": sys_oid, "sys_descr": sys_descr},
         interfaces=interfaces,

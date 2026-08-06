@@ -2,6 +2,17 @@
 
 All notable changes to NetAtlas are documented in this file.
 
+## [1.3.1] - 2026-08-06
+
+### Fixed — SNMP discovery / identity enrichment
+
+- Discovery now tries **all SNMP credential profiles** (not only those attached to the seed), so profiles created on Credentials actually authenticate MikroTik/Eltex/…
+- “Assign to all devices” also attaches the profile to **all discovery seeds**
+- Unknown Device path still **binds credentials** for later enrichment
+- “Collect metrics now” runs **inline identity enrichment** (sysName, vendor, model, interfaces, MAC) for ICMP-only stubs
+- MikroTik model parsed from `sysDescr` (e.g. `CRS354-48P-4S+2Q+`); management MAC from IF-MIB
+- SNMP `NoSuchObject` / empty ENTITY `.1` no longer blocks classification
+
 ## [1.3.0] - 2026-08-06
 
 ### Added — Enterprise Analysis Platform
