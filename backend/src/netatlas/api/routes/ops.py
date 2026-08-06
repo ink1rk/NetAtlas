@@ -295,23 +295,14 @@ async def retry_job(
     job.finished_at = None
     job.error = None
     job.stats = {}
+    # Operator retry always runs inline to unblock stuck queue/worker cases
+    job.config = {**(job.config or {}), "dispatch": "inline", "cancelled": False, "celery_task_id": None}
     await repo.update(job)
     await session.commit()
-
-    dispatch = "pending"
-    task_id: str | None = None
-    try:
-        dispatch, task_id = await asyncio.to_thread(_enqueue_discovery, job.id)
-    except Exception as exc:
-        logger.warning("Retry enqueue failed job=%s (%s) — inline fallback", job.id, exc)
-        dispatch = "inline"
-        background_tasks.add_task(_run_discovery_inline, job.id)
-
-    job.config = {**(job.config or {}), "celery_task_id": task_id, "dispatch": dispatch, "cancelled": False}
-    await repo.update(job)
-    await session.commit()
+    background_tasks.add_task(_run_discovery_inline, job.id)
+    logger.info("Discovery job retry via inline job=%s", job.id)
     payload = _job_dict(job)
-    payload["dispatch"] = dispatch
+    payload["dispatch"] = "inline"
     return payload
 
 
