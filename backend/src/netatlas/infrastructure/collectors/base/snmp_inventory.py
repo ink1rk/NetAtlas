@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from netatlas.domain.ports import (
     ArpEntry,
@@ -274,11 +275,65 @@ async def snmp_metrics(ctx: CollectorContext) -> MetricsSample:
     except Exception:
         pass
 
+    interface_counters = await snmp_interface_counters(ctx)
+
     return MetricsSample(
         cpu_percent=cpu_percent,
         memory_percent=memory_percent,
+        interface_counters=interface_counters,
         extras=extras,
     )
+
+
+async def snmp_interface_counters(ctx: CollectorContext) -> list[dict[str, Any]]:
+    """Per-interface error/discard/octet counters for Link Health scoring.
+
+    Keyed by interface name (matches Interface.name populated at discovery time)
+    so the topology/link-health API can correlate readings to a specific Link.
+    """
+    if not ctx.snmp_walk:
+        return []
+    params = _cred_snmp(ctx)
+    try:
+        names = {oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, SNMP_IF_NAME, **params)}
+        if not names:
+            names = {
+                oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, SNMP_IF_DESCR, **params)
+            }
+        opers = {oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, SNMP_IF_OPER, **params)}
+        in_err = {oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.14", **params)}
+        out_err = {oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.20", **params)}
+        in_disc = {oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.13", **params)}
+        out_disc = {oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.19", **params)}
+        in_oct = {oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.10", **params)}
+        out_oct = {oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.16", **params)}
+        speeds = {oid.rsplit(".", 1)[-1]: val for oid, val in await ctx.snmp_walk(ctx.target_ip, SNMP_IF_SPEED, **params)}
+    except Exception:
+        return []
+
+    def _int(v: str | None) -> int | None:
+        try:
+            return int(float(v)) if v is not None else None
+        except ValueError:
+            return None
+
+    counters: list[dict[str, Any]] = []
+    for idx, name in names.items():
+        counters.append(
+            {
+                "if_index": idx,
+                "name": name,
+                "oper_status": _if_status(opers.get(idx)),
+                "in_errors": _int(in_err.get(idx)) or 0,
+                "out_errors": _int(out_err.get(idx)) or 0,
+                "in_discards": _int(in_disc.get(idx)) or 0,
+                "out_discards": _int(out_disc.get(idx)) or 0,
+                "in_octets": _int(in_oct.get(idx)),
+                "out_octets": _int(out_oct.get(idx)),
+                "speed_bps": _int(speeds.get(idx)),
+            }
+        )
+    return counters
 
 
 def _if_status(raw: str | None) -> str:
@@ -293,8 +348,7 @@ def _normalize_mac(raw: str | None) -> str | None:
     if not raw:
         return None
     cleaned = raw.strip().lower().replace(" ", ":").replace("-", ":")
-    if cleaned.startswith("0x"):
-        cleaned = cleaned[2:]
+    cleaned = cleaned.removeprefix("0x")
     hex_only = cleaned.replace(":", "")
     if len(hex_only) == 12 and all(c in "0123456789abcdef" for c in hex_only):
         return ":".join(hex_only[i : i + 2] for i in range(0, 12, 2))

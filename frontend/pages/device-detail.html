@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=mon1">
-  <link rel="stylesheet" href="/css/discovery.css?v=mon1">
+  <link rel="stylesheet" href="/css/app.css?v=ent1">
+  <link rel="stylesheet" href="/css/discovery.css?v=ent1">
   <script>
     try {
       var t = localStorage.getItem('netatlas_theme');
@@ -22,12 +22,12 @@
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
   <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
-  <script src="/js/i18n.js?v=mon1"></script>
-  <script src="/js/api.js?v=mon1"></script>
-  <script src="/js/auth.js?v=mon1"></script>
-  <script src="/js/charts.js?v=mon1"></script>
-  <script src="/js/ui.js?v=mon1"></script>
-  <script src="/js/app.js?v=mon1"></script>
+  <script src="/js/i18n.js?v=ent1"></script>
+  <script src="/js/api.js?v=ent1"></script>
+  <script src="/js/auth.js?v=ent1"></script>
+  <script src="/js/charts.js?v=ent1"></script>
+  <script src="/js/ui.js?v=ent1"></script>
+  <script src="/js/app.js?v=ent1"></script>
   <script>
     const deviceId = App.queryParam('id');
     if (!deviceId) window.location.href = '/pages/devices.html';
@@ -58,8 +58,11 @@
               <div class="tab-bar">
                 <button class="tab-btn active" data-tab="interfaces">${I18n.t('device.tab_ifaces')}</button>
                 <button class="tab-btn" data-tab="neighbors">${I18n.t('device.tab_neighbors')}</button>
+                <button class="tab-btn" data-tab="adjacency">${I18n.t('device.tab_adjacency')}</button>
                 <button class="tab-btn" data-tab="metrics">${I18n.t('device.tab_metrics')}</button>
                 <button class="tab-btn" data-tab="credentials">${I18n.t('device.tab_credentials')}</button>
+                ${String(device.platform || '').toLowerCase() === 'mikrotik' ? `<button class="tab-btn" data-tab="bridge">${I18n.t('bridge.title')}</button>` : ''}
+                ${(device.attributes || {}).device_class === 'printer' ? `<button class="tab-btn" data-tab="printer">${I18n.t('printer.title')}</button>` : ''}
               </div>
               <div id="tab-content"><p class="empty-state">${I18n.t('common.loading')}</p></div>
             </div>
@@ -143,6 +146,55 @@
             try { await Api.collectMetricsNow(); Ui.toast(I18n.t('cred.collect_ok'), 'ok'); setTimeout(() => loadTab('metrics', el), 2000); }
             catch (err) { Ui.toast(err.message, 'error'); }
           });
+        } else if (tab === 'adjacency') {
+          const [fdb, arp, routes] = await Promise.all([
+            Api.getDeviceFdb(deviceId).catch(() => []),
+            Api.getDeviceArp(deviceId).catch(() => []),
+            Api.getDeviceRoutes(deviceId).catch(() => []),
+          ]);
+          content.innerHTML = `
+            <h4 class="mb-2">FDB (${fdb.length})</h4>
+            ${fdb.length ? `<table class="data-table mb-4"><thead><tr><th>MAC</th><th>VLAN</th><th>${I18n.t('device.local_iface')}</th></tr></thead><tbody>
+              ${fdb.slice(0, 100).map((f) => `<tr><td class="mono">${App.escapeHtml(f.mac)}</td><td>${f.vlan_id ?? '—'}</td><td class="mono">${App.escapeHtml(f.interface)}</td></tr>`).join('')}
+            </tbody></table>` : `<p class="empty-state mb-4">${I18n.t('noc.empty')}</p>`}
+            <h4 class="mb-2">ARP (${arp.length})</h4>
+            ${arp.length ? `<table class="data-table mb-4"><thead><tr><th>IP</th><th>MAC</th><th>${I18n.t('device.local_iface')}</th></tr></thead><tbody>
+              ${arp.slice(0, 100).map((a) => `<tr><td class="mono">${App.escapeHtml(a.ip)}</td><td class="mono">${App.escapeHtml(a.mac)}</td><td class="mono">${App.escapeHtml(a.interface || '—')}</td></tr>`).join('')}
+            </tbody></table>` : `<p class="empty-state mb-4">${I18n.t('noc.empty')}</p>`}
+            <h4 class="mb-2">${I18n.t('nav.ipam')} · Routes (${routes.length})</h4>
+            ${routes.length ? `<table class="data-table"><thead><tr><th>Destination</th><th>Next hop</th><th>${I18n.t('device.local_iface')}</th><th>Protocol</th></tr></thead><tbody>
+              ${routes.slice(0, 100).map((r) => `<tr><td class="mono">${App.escapeHtml(r.destination)}</td><td class="mono">${App.escapeHtml(r.next_hop || '—')}</td><td class="mono">${App.escapeHtml(r.interface || '—')}</td><td>${App.escapeHtml(r.protocol || '—')}</td></tr>`).join('')}
+            </tbody></table>` : `<p class="empty-state">${I18n.t('noc.empty')}</p>`}
+          `;
+        } else if (tab === 'bridge') {
+          const bridge = await Api.getDeviceBridge(deviceId);
+          if (!bridge.supported) { content.innerHTML = `<p class="empty-state">${I18n.t('noc.empty')}</p>`; return; }
+          content.innerHTML = `
+            ${(bridge.bridges || []).map((b) => `<p class="form-hint">${App.escapeHtml(b.name)} · RSTP: ${App.escapeHtml(b.rstp)} · VLAN filtering: ${b.vlan_filtering ? 'on' : 'off'}</p>`).join('')}
+            <table class="data-table"><thead><tr><th>${I18n.t('bridge.port')}</th><th>${I18n.t('bridge.pvid')}</th><th>Horizon</th><th>${I18n.t('bridge.tagged')}</th></tr></thead><tbody>
+              ${(bridge.ports || []).map((p) => {
+                const tagged = (bridge.vlan_table || []).filter((v) => (v.tagged || []).includes(p.interface)).map((v) => v.vlan_id);
+                return `<tr><td class="mono">${App.escapeHtml(p.interface)}</td><td>${p.pvid ?? '—'}</td><td>${App.escapeHtml(p.horizon || '—')}</td><td class="mono">${App.escapeHtml(tagged.join(', ') || '—')}</td></tr>`;
+              }).join('')}
+            </tbody></table>
+          `;
+        } else if (tab === 'printer') {
+          const p = await Api.getDevicePrinter(deviceId);
+          const toner = [
+            ['Black', p.black_toner_percent], ['Cyan', p.cyan_toner_percent],
+            ['Magenta', p.magenta_toner_percent], ['Yellow', p.yellow_toner_percent], ['Waste', p.waste_toner_percent],
+          ].filter(([, v]) => typeof v === 'number');
+          content.innerHTML = `
+            <div class="row g-2 mb-3">
+              <div class="col-md-3"><div class="stat-block"><div class="stat-value">${App.escapeHtml(p.status || '—')}</div><div class="stat-label">${I18n.t('printer.status')}</div></div></div>
+              <div class="col-md-3"><div class="stat-block"><div class="stat-value">${p.total_pages ?? '—'}</div><div class="stat-label">${I18n.t('printer.total_pages')}</div></div></div>
+              <div class="col-md-3"><div class="stat-block"><div class="stat-value">${p.paper_empty ? I18n.t('printer.paper_empty') : I18n.t('printer.paper_ok')}</div><div class="stat-label">${I18n.t('printer.paper')}</div></div></div>
+            </div>
+            <div class="row g-2">
+              ${toner.map(([label, v]) => `<div class="col-md-2"><div class="stat-block ${v < 10 ? 'accent' : ''}"><div class="stat-value">${Math.round(v)}%</div><div class="stat-label">${App.escapeHtml(label)}</div></div></div>`).join('')}
+            </div>
+            ${(p.errors || []).length ? `<div class="alert-na error mt-3">${App.escapeHtml((p.errors || []).join(', '))}</div>` : ''}
+          `;
         } else if (tab === 'credentials') {
           const [linked, all] = await Promise.all([
             Api.getDeviceCredentials(deviceId),

@@ -66,6 +66,16 @@ class ArpEntry:
 
 
 @dataclass(slots=True)
+class RouteFact:
+    destination: str
+    next_hop: str | None
+    interface: str | None
+    protocol: str | None = None
+    metric: int | None = None
+    attributes: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class MetricsSample:
     cpu_percent: float | None = None
     memory_percent: float | None = None
@@ -126,6 +136,28 @@ class SnapshotRepository(Protocol):
     async def add(self, snapshot: Snapshot) -> Snapshot: ...
     async def get(self, snapshot_id: UUID) -> Snapshot | None: ...
     async def list(self) -> list[Snapshot]: ...
+
+
+class NeighborRepository(Protocol):
+    """Persists LLDP/CDP adjacency facts (Smart Discovery enrichment)."""
+
+    async def replace_for_device(self, device_id: UUID, neighbors: list[NeighborFact]) -> None: ...
+
+
+class FdbRepository(Protocol):
+    async def replace_for_device(self, device_id: UUID, entries: list[FdbEntry]) -> None: ...
+
+
+class ArpRepository(Protocol):
+    async def replace_for_device(self, device_id: UUID, entries: list[ArpEntry]) -> None: ...
+
+
+class VlanRepository(Protocol):
+    async def replace_for_device(self, device_id: UUID, vlans: list[dict[str, Any]]) -> None: ...
+
+
+class RouteRepository(Protocol):
+    async def replace_for_device(self, device_id: UUID, routes: list[RouteFact]) -> None: ...
 
 
 class DiscoverySeedRepository(Protocol):

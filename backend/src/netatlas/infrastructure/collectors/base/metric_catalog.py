@@ -81,6 +81,42 @@ METRIC_CATALOG: list[dict[str, Any]] = [
         "kind": "gauge",
         "description": "When exposed by vendor collector",
     },
+    {
+        "name": "toner_percent",
+        "label": "Printer toner level",
+        "mib": "Printer-MIB",
+        "oid": "1.3.6.1.2.1.43.11.1.1.9 / .8",
+        "unit": "%",
+        "kind": "gauge",
+        "description": "prtMarkerSuppliesLevel / prtMarkerSuppliesMaxCapacity (primary/black marker)",
+    },
+    {
+        "name": "paper_empty",
+        "label": "Printer paper empty",
+        "mib": "Printer-MIB",
+        "oid": "1.3.6.1.2.1.25.3.5.1.2",
+        "unit": "bool",
+        "kind": "gauge",
+        "description": "1 when hrPrinterDetectedErrorState reports a paper-out condition",
+    },
+    {
+        "name": "rx_optical_dbm",
+        "label": "SFP RX optical power",
+        "mib": "vendor DOM (SFF-8472)",
+        "oid": "vendor-specific",
+        "unit": "dBm",
+        "kind": "gauge",
+        "description": "When exposed by vendor collector (transceiver digital optical monitoring)",
+    },
+    {
+        "name": "tx_optical_dbm",
+        "label": "SFP TX optical power",
+        "mib": "vendor DOM (SFF-8472)",
+        "oid": "vendor-specific",
+        "unit": "dBm",
+        "kind": "gauge",
+        "description": "When exposed by vendor collector (transceiver digital optical monitoring)",
+    },
 ]
 
 

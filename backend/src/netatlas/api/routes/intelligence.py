@@ -6,8 +6,6 @@ Additive routes — do not replace existing inventory/topology endpoints.
 from __future__ import annotations
 
 import re
-from collections import defaultdict
-from datetime import datetime, timezone
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
@@ -490,53 +488,9 @@ async def trace_mac(
                 "interface": port,
             }
         )
-        # Walk toward core via cable path heuristic: pick highest-rank neighbor chain
-        # Use BFS toward a core/firewall device if present
-        cores = (
-            await session.execute(
-                select(DeviceModel).where(DeviceModel.network_role.in_(("core", "firewall", "router")))
-            )
-        ).scalars().all()
-        if cores:
-            target = cores[0]
-            interfaces = (await session.execute(select(InterfaceModel))).scalars().all()
-            interfaces_by_id = {
-                str(i.id): {"id": str(i.id), "device_id": str(i.device_id), "name": i.name}
-                for i in interfaces
-            }
-            devices_map = {
-                str(d.id): {"id": str(d.id), "hostname": d.hostname, "network_role": d.network_role}
-                for d in (await session.execute(select(DeviceModel))).scalars().all()
-            }
-            links = (
-                await session.execute(select(LinkModel))
-            ).scalars().all()
-            link_dicts = [
-                {
-                    "id": str(link.id),
-                    "interface_a_id": str(link.interface_a_id),
-                    "interface_b_id": str(link.interface_b_id),
-                }
-                for link in links
-            ]
-            from netatlas.domain.services import CablePathResolver
-
-            hops = CablePathResolver().resolve(
-                from_device_id=connected.id,
-                to_device_id=target.id,
-                devices=devices_map,
-                links=link_dicts,
-                interfaces_by_id=interfaces_by_id,
-            )
-            for hop in hops[1:]:
-                path.append(
-                    {
-                        "device_id": hop.device_id,
-                        "hostname": hop.hostname,
-                        "role": devices_map.get(hop.device_id, {}).get("network_role"),
-                        "interface": hop.interface,
-                    }
-                )
+        # Walk toward core via cable path heuristic (shared with Trace Device)
+        for hop in (await _path_to_core(session, connected))[1:]:
+            path.append(hop)
 
     return {
         "query": query,
@@ -552,6 +506,107 @@ async def trace_mac(
         "path": path,
         "sources": sources,
     }
+
+
+async def _path_to_core(session: AsyncSession, start: DeviceModel) -> list[dict[str, Any]]:
+    """BFS from a device toward the nearest core/firewall/router — shared by Trace MAC/Device."""
+    path: list[dict[str, Any]] = [
+        {"device_id": str(start.id), "hostname": start.hostname, "role": start.network_role, "interface": None}
+    ]
+    cores = (
+        await session.execute(
+            select(DeviceModel).where(DeviceModel.network_role.in_(("core", "firewall", "router")))
+        )
+    ).scalars().all()
+    if not cores or start.id in {c.id for c in cores}:
+        return path
+    target = cores[0]
+    interfaces = (await session.execute(select(InterfaceModel))).scalars().all()
+    interfaces_by_id = {str(i.id): {"id": str(i.id), "device_id": str(i.device_id), "name": i.name} for i in interfaces}
+    devices_map = {
+        str(d.id): {"id": str(d.id), "hostname": d.hostname, "network_role": d.network_role}
+        for d in (await session.execute(select(DeviceModel))).scalars().all()
+    }
+    links = (await session.execute(select(LinkModel))).scalars().all()
+    link_dicts = [
+        {"id": str(link.id), "interface_a_id": str(link.interface_a_id), "interface_b_id": str(link.interface_b_id)}
+        for link in links
+    ]
+    from netatlas.domain.services import CablePathResolver
+
+    hops = CablePathResolver().resolve(
+        from_device_id=start.id,
+        to_device_id=target.id,
+        devices=devices_map,
+        links=link_dicts,
+        interfaces_by_id=interfaces_by_id,
+    )
+    for hop in hops[1:]:
+        path.append(
+            {
+                "device_id": hop.device_id,
+                "hostname": hop.hostname,
+                "role": devices_map.get(hop.device_id, {}).get("network_role"),
+                "interface": hop.interface,
+            }
+        )
+    return path
+
+
+@router.get("/trace/device")
+async def trace_device(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    _user: Annotated[Any, Depends(require_permission("topology:read"))],
+    q: str = Query(..., min_length=1, description="Device ID, hostname, or management IP"),
+) -> dict[str, Any]:
+    """Trace Device: full path from a device up to the nearest core/firewall."""
+    device: DeviceModel | None = None
+    try:
+        device = await session.get(DeviceModel, UUID(q))
+    except ValueError:
+        device = None
+    if not device:
+        rows = (await session.execute(select(DeviceModel))).scalars().all()
+        qlow = q.strip().lower()
+        device = next(
+            (d for d in rows if d.hostname.lower() == qlow or (d.management_ip and str(d.management_ip) == q.strip())),
+            None,
+        )
+    if not device:
+        return {"query": q, "found": False, "path": []}
+
+    ifaces = (await session.execute(select(InterfaceModel.id).where(InterfaceModel.device_id == device.id))).scalars().all()
+    links = []
+    if ifaces:
+        links = (
+            await session.execute(
+                select(LinkModel).where(or_(LinkModel.interface_a_id.in_(ifaces), LinkModel.interface_b_id.in_(ifaces)))
+            )
+        ).scalars().all()
+    return {
+        "query": q,
+        "found": True,
+        "device_id": str(device.id),
+        "hostname": device.hostname,
+        "role": device.network_role,
+        "management_ip": str(device.management_ip) if device.management_ip else None,
+        "direct_links": len(links),
+        "path": await _path_to_core(session, device),
+    }
+
+
+@router.get("/trace/vlan/{vlan_id}")
+async def trace_vlan(
+    vlan_id: int,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    _user: Annotated[Any, Depends(require_permission("topology:read"))],
+) -> dict[str, Any]:
+    """Trace VLAN: connected devices/ports and the topology layers it touches."""
+    data = await list_vlan_intelligence(session, _user)
+    for item in data["items"]:
+        if item["vlan_id"] == vlan_id:
+            return {"query": vlan_id, "found": True, **item}
+    return {"query": vlan_id, "found": False, "devices": [], "ports": [], "topology_path": []}
 
 
 @router.get("/vlans")
@@ -582,9 +637,45 @@ async def list_vlan_intelligence(
         if v.name and not bucket["name"]:
             bucket["name"] = v.name
 
-    ifaces = (await session.execute(select(InterfaceModel).where(InterfaceModel.native_vlan.is_not(None)))).scalars().all()
-    for i in ifaces:
-        vid = int(i.native_vlan)  # type: ignore[arg-type]
+    all_ifaces = (await session.execute(select(InterfaceModel))).scalars().all()
+    for i in all_ifaces:
+        if i.native_vlan is not None:
+            vid = int(i.native_vlan)
+            bucket = agg.setdefault(
+                vid,
+                {
+                    "vlan_id": vid,
+                    "name": None,
+                    "description": None,
+                    "networks": [],
+                    "device_ids": set(),
+                    "ports": [],
+                    "device_count": 0,
+                },
+            )
+            bucket["device_ids"].add(str(i.device_id))
+            bucket["ports"].append({"device_id": str(i.device_id), "interface": i.name, "tagged": False})
+        for tvid in (i.attributes or {}).get("tagged_vlans") or []:
+            try:
+                vid = int(tvid)
+            except (TypeError, ValueError):
+                continue
+            bucket = agg.setdefault(
+                vid,
+                {
+                    "vlan_id": vid,
+                    "name": None,
+                    "description": None,
+                    "networks": [],
+                    "device_ids": set(),
+                    "ports": [],
+                    "device_count": 0,
+                },
+            )
+            bucket["device_ids"].add(str(i.device_id))
+            bucket["ports"].append({"device_id": str(i.device_id), "interface": i.name, "tagged": True})
+
+    for vid, o in obj_by_id.items():
         bucket = agg.setdefault(
             vid,
             {
@@ -597,25 +688,10 @@ async def list_vlan_intelligence(
                 "device_count": 0,
             },
         )
-        bucket["device_ids"].add(str(i.device_id))
-        bucket["ports"].append({"device_id": str(i.device_id), "interface": i.name, "tagged": False})
-
-    for vid, o in obj_by_id.items():
-        bucket = agg.setdefault(
-            vid,
-            {
-                "vlan_id": vid,
-                "name": o.name,
-                "description": o.description,
-                "networks": list(o.networks or []),
-                "device_ids": set(),
-                "ports": [],
-                "device_count": 0,
-            },
-        )
         bucket["name"] = bucket["name"] or o.name
         bucket["description"] = o.description
         bucket["networks"] = list(o.networks or [])
+        bucket["gateway"] = o.gateway
 
     devices = {
         str(d.id): d
@@ -628,12 +704,15 @@ async def list_vlan_intelligence(
         for layer in ("core", "distribution", "access"):
             if layer in roles:
                 path.append(layer)
+        ports = bucket["ports"][:80]
         items.append(
             {
                 "vlan_id": vid,
                 "name": bucket["name"] or f"VLAN {vid}",
                 "description": bucket["description"],
                 "networks": bucket["networks"],
+                "prefix": bucket["networks"][0] if bucket["networks"] else None,
+                "gateway": bucket.get("gateway"),
                 "device_count": len(bucket["device_ids"]),
                 "devices": [
                     {
@@ -643,11 +722,60 @@ async def list_vlan_intelligence(
                     }
                     for i in list(bucket["device_ids"])[:40]
                 ],
-                "ports": bucket["ports"][:40],
+                "ports": ports,
+                "tagged_ports": [p for p in ports if p.get("tagged")],
+                "untagged_ports": [p for p in ports if not p.get("tagged")],
                 "topology_path": path,
             }
         )
     return {"total": len(items), "items": items}
+
+
+class VlanUpdateBody(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    gateway: str | None = None
+    networks: list[str] | None = None
+
+
+@router.patch("/vlans/{vlan_id}")
+async def update_vlan_object(
+    vlan_id: int,
+    body: VlanUpdateBody,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[Any, Depends(require_permission("discovery:write"))],
+) -> dict[str, Any]:
+    """Admin-editable VLAN metadata (name/description/gateway/prefixes) for VLAN Explorer."""
+    obj = (
+        await session.execute(select(VlanObjectModel).where(VlanObjectModel.vlan_id == vlan_id))
+    ).scalar_one_or_none()
+    if obj is None:
+        obj = VlanObjectModel(id=uuid4(), vlan_id=vlan_id)
+        session.add(obj)
+    if body.name is not None:
+        obj.name = body.name
+    if body.description is not None:
+        obj.description = body.description
+    if body.gateway is not None:
+        obj.gateway = body.gateway
+    if body.networks is not None:
+        obj.networks = body.networks
+    session.add(
+        AuditEventModel(
+            id=uuid4(),
+            actor_user_id=getattr(user, "id", None),
+            action="vlan.metadata_update",
+            resource_type="vlan",
+            resource_id=str(vlan_id),
+            details=body.model_dump(exclude_none=True),
+        )
+    )
+    await session.commit()
+    data = await list_vlan_intelligence(session, user)
+    for item in data["items"]:
+        if item["vlan_id"] == vlan_id:
+            return item
+    return {"vlan_id": vlan_id, "name": obj.name, "gateway": obj.gateway, "networks": obj.networks or []}
 
 
 @router.get("/vlans/{vlan_id}")

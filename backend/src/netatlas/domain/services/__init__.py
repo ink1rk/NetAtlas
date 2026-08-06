@@ -10,7 +10,6 @@ from typing import Any
 from uuid import UUID
 
 
-
 @dataclass(frozen=True, slots=True)
 class GraphNode:
     id: str
@@ -130,6 +129,107 @@ class CablePathResolver:
             cursor = meta[0] if meta else None
         hops_rev.reverse()
         return hops_rev
+
+
+class LinkHealthScorer:
+    """Zabbix-style Link Health classification: healthy | warning | critical.
+
+    Pure function of interface state + optional per-interface counters
+    (collected via SNMP IF-MIB). Designed to degrade gracefully when
+    counters are unavailable (returns "unknown" rather than a false healthy).
+    """
+
+    CRC_WARN = 50
+    CRC_CRIT = 500
+    DROPS_WARN = 100
+    DROPS_CRIT = 1000
+    UTIL_WARN = 80.0
+    UTIL_CRIT = 95.0
+    OPTICAL_WARN_DBM = -18.0
+    OPTICAL_CRIT_DBM = -23.0
+    TEMP_WARN_C = 55.0
+    TEMP_CRIT_C = 70.0
+
+    def score(
+        self,
+        *,
+        iface_a: dict[str, Any] | None,
+        iface_b: dict[str, Any] | None,
+        counters_a: dict[str, Any] | None = None,
+        counters_b: dict[str, Any] | None = None,
+        link: dict[str, Any] | None = None,
+    ) -> tuple[str, list[str]]:
+        iface_a = iface_a or {}
+        iface_b = iface_b or {}
+        link = link or {}
+        reasons: list[str] = []
+        level = 0  # 0 healthy, 1 warning, 2 critical
+
+        def bump(new_level: int, reason: str) -> None:
+            nonlocal level
+            level = max(level, new_level)
+            reasons.append(reason)
+
+        oper_a = str(iface_a.get("oper_status") or "unknown").lower()
+        oper_b = str(iface_b.get("oper_status") or "unknown").lower()
+        if oper_a == "down" or oper_b == "down":
+            bump(2, "One or both interfaces are operationally down")
+
+        duplex_a = (iface_a.get("duplex") or "").lower()
+        duplex_b = (iface_b.get("duplex") or "").lower()
+        if duplex_a and duplex_b and duplex_a != duplex_b:
+            bump(1, f"Duplex mismatch ({duplex_a} vs {duplex_b})")
+
+        crc = int((counters_a or {}).get("in_errors") or 0) + int((counters_b or {}).get("in_errors") or 0)
+        if crc:
+            if crc >= self.CRC_CRIT:
+                bump(2, f"High CRC/input errors ({crc})")
+            elif crc >= self.CRC_WARN:
+                bump(1, f"Elevated CRC/input errors ({crc})")
+
+        drops = (
+            int((counters_a or {}).get("in_discards") or 0)
+            + int((counters_a or {}).get("out_discards") or 0)
+            + int((counters_b or {}).get("in_discards") or 0)
+            + int((counters_b or {}).get("out_discards") or 0)
+        )
+        if drops:
+            if drops >= self.DROPS_CRIT:
+                bump(2, f"High packet drops ({drops})")
+            elif drops >= self.DROPS_WARN:
+                bump(1, f"Elevated packet drops ({drops})")
+
+        for util_key, label in (("rx_utilization_pct", "RX"), ("tx_utilization_pct", "TX")):
+            util = link.get(util_key)
+            if util is None:
+                continue
+            if util >= self.UTIL_CRIT:
+                bump(2, f"{label} utilization critical ({util:.0f}%)")
+            elif util >= self.UTIL_WARN:
+                bump(1, f"{label} utilization high ({util:.0f}%)")
+
+        for optical_key, label in (("rx_optical_dbm", "RX optical power"), ("tx_optical_dbm", "TX optical power")):
+            val = link.get(optical_key)
+            if val is None:
+                continue
+            if val <= self.OPTICAL_CRIT_DBM:
+                bump(2, f"{label} critically low ({val} dBm)")
+            elif val <= self.OPTICAL_WARN_DBM:
+                bump(1, f"{label} low ({val} dBm)")
+
+        temp = link.get("temperature_c")
+        if temp is not None:
+            if temp >= self.TEMP_CRIT_C:
+                bump(2, f"Transceiver temperature critical ({temp}°C)")
+            elif temp >= self.TEMP_WARN_C:
+                bump(1, f"Transceiver temperature high ({temp}°C)")
+
+        if not counters_a and not counters_b and level == 0 and oper_a == "unknown" and oper_b == "unknown":
+            return "unknown", ["No telemetry available yet"]
+        if not reasons:
+            reasons = ["No anomalies detected"]
+        status = {0: "healthy", 1: "warning", 2: "critical"}[level]
+        return status, reasons
 
 
 class SnapshotComparer:

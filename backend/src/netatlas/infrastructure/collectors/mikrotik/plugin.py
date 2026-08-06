@@ -55,6 +55,12 @@ class MikrotikCollector:
             resource = await run("/system resource print")
             routerboard = await run("/system routerboard print")
             ifaces = await run("/interface print detail without-paging")
+            vlan_print = await run("/interface vlan print detail without-paging")
+            bridge_ports = await run("/interface bridge port print detail without-paging")
+            bridge_vlans = await run("/interface bridge vlan print detail without-paging")
+            bridge_print = await run("/interface bridge print detail without-paging")
+            route_print = await run("/ip route print detail without-paging")
+            clock_print = await run("/system clock print")
             if identity:
                 m = re.search(r'name:\s*"?([^"\n]+)"?', identity)
                 if m:
@@ -85,6 +91,36 @@ class MikrotikCollector:
                 parsed = _parse_routeros_interfaces(ifaces)
                 if parsed:
                     facts.interfaces = parsed
+            if vlan_print:
+                facts.vlans = _parse_vlan_print(vlan_print)
+            if clock_print:
+                tz = re.search(r"time-zone-name:\s*([^\n]+)", clock_print)
+                if tz:
+                    facts.attributes["timezone"] = tz.group(1).strip()
+            bridge = _parse_bridge_view(bridge_print, bridge_ports, bridge_vlans)
+            if bridge:
+                facts.attributes["bridge"] = bridge
+                # Mikrotik Bridge View — apply PVID/tagged per bridge port onto the matching interface
+                by_name = {i["name"]: i for i in facts.interfaces}
+                for port in bridge.get("ports", []):
+                    iface = by_name.get(port["interface"])
+                    if not iface:
+                        continue
+                    if port.get("pvid"):
+                        iface["native_vlan"] = port["pvid"]
+                    tagged = sorted(
+                        {
+                            v["vlan_id"]
+                            for v in bridge.get("vlan_table", [])
+                            if port["interface"] in v.get("tagged", [])
+                        }
+                    )
+                    if tagged:
+                        iface["tagged_vlans"] = tagged
+                    if len(bridge.get("ports", [])) > 1:
+                        iface["is_trunk"] = bool(tagged)
+            if route_print:
+                facts.attributes["routes"] = _parse_routes(route_print)
         return facts
 
     async def collect_neighbors(self, ctx: CollectorContext) -> list[NeighborFact]:
@@ -243,6 +279,116 @@ def _parse_bridge_hosts(text: str) -> list[FdbEntry]:
             iface = line.split("interface=", 1)[1].split()[0].strip('"')
         entries.append(FdbEntry(mac=mac, vlan_id=None, interface=iface))
     return entries
+
+
+def _parse_vlan_print(text: str) -> list[dict]:
+    """`/interface vlan print detail` → [{vlan_id, name}] for VLAN Explorer."""
+    items: list[dict] = []
+    for block in re.split(r"\n(?=\s*\d+\s)", text or ""):
+        vid = name = None
+        if "vlan-id=" in block:
+            m = re.search(r"vlan-id=(\d+)", block)
+            if m:
+                vid = int(m.group(1))
+        if "name=" in block:
+            m = re.search(r'name="?([^"\s]+)"?', block)
+            if m:
+                name = m.group(1)
+        if vid is not None:
+            items.append({"vlan_id": vid, "name": name})
+    return items
+
+
+def _parse_bridge_view(bridge_print: str | None, bridge_ports: str | None, bridge_vlans: str | None) -> dict:
+    """Mikrotik Bridge View: bridges, ports (PVID/tagged/untagged/horizon), RSTP, VLAN table."""
+    bridges: list[dict] = []
+    for block in re.split(r"\n(?=\s*\d+\s)", bridge_print or ""):
+        if "name=" not in block:
+            continue
+        name_m = re.search(r'name="?([^"\s]+)"?', block)
+        protocol_m = re.search(r"protocol-mode=(\S+)", block)
+        vlan_filtering_m = re.search(r"vlan-filtering=(yes|no)", block)
+        if name_m:
+            bridges.append(
+                {
+                    "name": name_m.group(1),
+                    "rstp": (protocol_m.group(1) if protocol_m else "none"),
+                    "vlan_filtering": (vlan_filtering_m.group(1) == "yes") if vlan_filtering_m else False,
+                }
+            )
+
+    ports: list[dict] = []
+    for block in re.split(r"\n(?=\s*\d+\s)", bridge_ports or ""):
+        if "interface=" not in block:
+            continue
+        iface_m = re.search(r'interface="?([^"\s]+)"?', block)
+        bridge_m = re.search(r'bridge="?([^"\s]+)"?', block)
+        pvid_m = re.search(r"pvid=(\d+)", block)
+        horizon_m = re.search(r"horizon=(\S+)", block)
+        if iface_m:
+            ports.append(
+                {
+                    "interface": iface_m.group(1),
+                    "bridge": bridge_m.group(1) if bridge_m else None,
+                    "pvid": int(pvid_m.group(1)) if pvid_m else 1,
+                    "horizon": horizon_m.group(1) if horizon_m else None,
+                }
+            )
+
+    vlan_table: list[dict] = []
+    for block in re.split(r"\n(?=\s*\d+\s)", bridge_vlans or ""):
+        if "vlan-ids=" not in block:
+            continue
+        vid_m = re.search(r"vlan-ids=(\d+)", block)
+        tagged_m = re.search(r"tagged=([^\s]*)", block)
+        untagged_m = re.search(r"untagged=([^\s]*)", block)
+        if vid_m:
+            vlan_table.append(
+                {
+                    "vlan_id": int(vid_m.group(1)),
+                    "tagged": [p for p in (tagged_m.group(1).split(",") if tagged_m else []) if p],
+                    "untagged": [p for p in (untagged_m.group(1).split(",") if untagged_m else []) if p],
+                }
+            )
+
+    if not bridges and not ports and not vlan_table:
+        return {}
+    return {"bridges": bridges, "ports": ports, "vlan_table": vlan_table}
+
+
+def _parse_routes(text: str) -> list[dict]:
+    """`/ip route print detail` → normalized route facts (best-effort, active routes only)."""
+    routes: list[dict] = []
+    for block in re.split(r"\n(?=\s*\d+\s)", text or ""):
+        if "dst-address=" not in block:
+            continue
+        dst_m = re.search(r"dst-address=(\S+)", block)
+        gw_m = re.search(r"gateway=(\S+)", block)
+        iface_m = re.search(r'(?:gateway|interface)=[^\s]*%([^\s]+)', block)
+        distance_m = re.search(r"distance=(\d+)", block)
+        flags_m = re.match(r"\s*\d+\s+([A-Za-z ]*?)\s+dst-address=", block)
+        flags = flags_m.group(1).replace(" ", "") if flags_m else ""
+        proto = "static"
+        if "ospf" in block.lower():
+            proto = "ospf"
+        elif "bgp" in block.lower():
+            proto = "bgp"
+        elif "C" in flags:
+            proto = "connected"
+        elif "S" in flags:
+            proto = "static"
+        if dst_m:
+            gw = gw_m.group(1) if gw_m else None
+            routes.append(
+                {
+                    "destination": dst_m.group(1),
+                    "next_hop": gw.split("%")[0] if gw else None,
+                    "interface": iface_m.group(1) if iface_m else (gw.split("%")[1] if gw and "%" in gw else None),
+                    "protocol": proto,
+                    "metric": int(distance_m.group(1)) if distance_m else None,
+                }
+            )
+    return routes
 
 
 def _parse_arp(text: str) -> list[ArpEntry]:

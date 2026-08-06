@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ipaddress
-import json
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -11,15 +10,23 @@ from uuid import UUID, uuid4
 
 from netatlas.domain.entities import Device, DiscoveryJob, Interface, Link, Snapshot
 from netatlas.domain.ports import (
+    ArpEntry,
+    ArpRepository,
     CollectorContext,
     DeviceFingerprint,
     DeviceRepository,
     DiscoveryJobRepository,
     DiscoverySeedRepository,
+    FdbEntry,
+    FdbRepository,
     InterfaceRepository,
     LinkRepository,
     NeighborFact,
+    NeighborRepository,
+    RouteFact,
+    RouteRepository,
     SnapshotRepository,
+    VlanRepository,
 )
 from netatlas.domain.services import SnapshotChecksum
 from netatlas.domain.value_objects import (
@@ -30,11 +37,46 @@ from netatlas.domain.value_objects import (
     JobStatus,
 )
 from netatlas.infrastructure.collectors.base.icmp import icmp_probe
+from netatlas.infrastructure.collectors.base.local_arp import resolve_local_mac, reverse_dns
+from netatlas.infrastructure.collectors.base.oui import guess_device_type, lookup_oui
 from netatlas.infrastructure.collectors.base.registry import CollectorRegistry, fingerprint_platform
 from netatlas.infrastructure.collectors.base.snmp_transport import SnmpTransport
 from netatlas.infrastructure.collectors.base.ssh_transport import SshTransport
 
 logger = logging.getLogger(__name__)
+
+# scan_mode gating — see docs/DISCOVERY_ENRICHMENT.md
+_MODE_ADJACENCY = {"deep", "topology"}  # neighbors/FDB/ARP for link building
+_MODE_FULL_DETAIL = {"deep"}  # VLANs, routes, interface persistence detail
+
+
+def _is_generic_signal(inventory: Any) -> bool:
+    """True when a collector returned essentially no usable signal (SNMP closed)."""
+    vendor = str(getattr(inventory, "vendor", "") or "").lower()
+    model = str(getattr(inventory, "model", "") or "").lower()
+    return vendor in {"generic", "unknown", ""} and model in {"unknown", ""} and not inventory.interfaces
+
+
+_FIBER_HINTS = ("sfp", "fiber", "tengig", "twentyfive", "fortygig", "hundredgig", "gpon", "dwdm")
+_FIBER_PREFIXES = ("te", "xe", "hu", "twe", "fo")  # Cisco-style short names for fiber uplinks (Te0/1, Xe-0/0/0, ...)
+_COPPER_HINTS = ("fastethernet", "gigabitethernet", "ether", "eth", "fa0", "fa1", "gi0", "gi1")
+
+
+def _guess_media(interface_name: str | None) -> str:
+    """Best-effort Fiber/Copper classification from interface naming conventions.
+
+    Real transceiver media type (when exposed via ENTITY-MIB/vendor OIDs) should
+    override this heuristic — this is a sane default when it is not available.
+    """
+    name = (interface_name or "").lower()
+    if any(h in name for h in _FIBER_HINTS):
+        return "fiber"
+    for prefix in _FIBER_PREFIXES:
+        if name.startswith(prefix) and len(name) > len(prefix) and (name[len(prefix)].isdigit() or name[len(prefix)] in "-/"):
+            return "fiber"
+    if any(h in name for h in _COPPER_HINTS):
+        return "copper"
+    return "unknown"
 
 
 class DiscoveryOrchestrator:
@@ -53,6 +95,12 @@ class DiscoveryOrchestrator:
         credential_loader: Any,
         progress_callback: Any | None = None,
         on_device: Any | None = None,
+        credential_candidates_loader: Any | None = None,
+        neighbors: NeighborRepository | None = None,
+        fdb: FdbRepository | None = None,
+        arp: ArpRepository | None = None,
+        vlans: VlanRepository | None = None,
+        routes: RouteRepository | None = None,
     ) -> None:
         self._jobs = jobs
         self._seeds = seeds
@@ -64,6 +112,14 @@ class DiscoveryOrchestrator:
         self._credential_loader = credential_loader
         self._progress = progress_callback
         self._on_device = on_device
+        # Credential Manager — rotation across candidate profiles (additive; optional)
+        self._credential_candidates_loader = credential_candidates_loader
+        # Discovery persistence unlock — optional writer ports (additive; optional)
+        self._neighbor_repo = neighbors
+        self._fdb_repo = fdb
+        self._arp_repo = arp
+        self._vlan_repo = vlans
+        self._route_repo = routes
         self._snmp = SnmpTransport()
         self._ssh = SshTransport()
 
@@ -91,11 +147,16 @@ class DiscoveryOrchestrator:
         await self._jobs.update(job)
         await self._emit(job_id, {"event": "started"})
 
+        scan_mode = str((job.config or {}).get("scan_mode") or "deep").lower()
+        want_adjacency = scan_mode in _MODE_ADJACENCY
+        want_full_detail = scan_mode in _MODE_FULL_DETAIL
+
         try:
             seed_ids = [UUID(x) for x in job.config.get("seed_ids", [])] if job.config.get("seed_ids") else []
             seeds = await self._seeds.get_many(seed_ids)
             targets = self._expand_targets(seeds)
             job.stats["targets"] = len(targets)
+            job.stats.setdefault("unknown_devices", 0)
             await self._jobs.update(job)
             await self._emit(job_id, {"event": "targets", "count": len(targets)})
             device_index: dict[str, Device] = {}
@@ -119,10 +180,43 @@ class DiscoveryOrchestrator:
                         continue
                     job.stats["alive"] = int(job.stats.get("alive", 0)) + 1
                     creds = await self._credential_loader(seeds)
-                    fingerprint = await self._fingerprint(target, creds)
+                    candidates = (
+                        await self._credential_candidates_loader(seeds)
+                        if self._credential_candidates_loader
+                        else None
+                    )
+                    fingerprint, winning_creds, verified_profile_id = await self._fingerprint(
+                        target, creds, candidates
+                    )
                     plugin = self._registry.resolve(fingerprint)
-                    ctx = self._build_context(target, creds, job.config)
-                    inventory = await plugin.collect_inventory(ctx)
+                    ctx = self._build_context(target, winning_creds, job.config)
+
+                    try:
+                        inventory = await plugin.collect_inventory(ctx)
+                        collection_failed = _is_generic_signal(inventory)
+                    except Exception:  # noqa: BLE001
+                        logger.warning("Inventory collection failed ip=%s — falling back to Unknown Device", target)
+                        inventory = None
+                        collection_failed = True
+
+                    if collection_failed:
+                        device = await self._create_unknown_device(target, inventory)
+                        job.stats["unknown_devices"] = int(job.stats.get("unknown_devices", 0)) + 1
+                        device = await self._devices.upsert_by_identity(device)
+                        device_index[target] = device
+                        job.stats["inventoried"] = int(job.stats.get("inventoried", 0)) + 1
+                        await self._jobs.update(job)
+                        await self._emit(
+                            job_id,
+                            {"event": "device", "ip": target, "hostname": device.hostname, "vendor": device.vendor},
+                        )
+                        continue
+
+                    if verified_profile_id:
+                        inventory.attributes = {
+                            **inventory.attributes,
+                            "verified_credential_profile_id": str(verified_profile_id),
+                        }
                     device = Device(
                         id=uuid4(),
                         hostname=inventory.hostname,
@@ -144,7 +238,7 @@ class DiscoveryOrchestrator:
                     if self._on_device:
                         try:
                             await self._on_device(device, seeds)
-                        except Exception:  # noqa: BLE001
+                        except Exception:
                             logger.exception("on_device callback failed ip=%s", target)
                     ifaces = [
                         Interface(
@@ -163,28 +257,80 @@ class DiscoveryOrchestrator:
                             is_trunk=bool(i.get("is_trunk", False)),
                             native_vlan=i.get("native_vlan"),
                             lacp_group=i.get("lacp_group"),
-                            attributes={},
+                            attributes={"tagged_vlans": i["tagged_vlans"]} if i.get("tagged_vlans") else {},
                         )
                         for i in inventory.interfaces
                         if i.get("name")
                     ]
                     await self._interfaces.replace_for_device(device.id, ifaces)
-                    neighbors = await plugin.collect_neighbors(ctx)
-                    if not neighbors:
-                        fdb = await plugin.collect_fdb(ctx)
-                        neighbors = self._neighbors_from_fdb(fdb, device_index)
-                        method = DiscoveryMethod.FDB
-                    else:
-                        method = (
-                            DiscoveryMethod.LLDP
-                            if neighbors and neighbors[0].protocol == "lldp"
-                            else DiscoveryMethod.CDP
-                        )
-                    if not neighbors:
-                        arp = await plugin.collect_arp(ctx)
-                        neighbors = self._neighbors_from_arp(arp, device_index)
-                        method = DiscoveryMethod.ARP
-                    created_links = await self._materialize_links(device, ifaces, neighbors, method)
+
+                    neighbors: list[NeighborFact] = []
+                    method = DiscoveryMethod.MANUAL_SEED
+                    if want_adjacency:
+                        fdb_entries: list[FdbEntry] = []
+                        arp_entries: list[ArpEntry] = []
+                        lldp_neighbors: list[NeighborFact] = []
+                        try:
+                            lldp_neighbors = await plugin.collect_neighbors(ctx)
+                        except Exception:  # noqa: BLE001
+                            logger.debug("collect_neighbors failed ip=%s", target)
+                        try:
+                            fdb_entries = await plugin.collect_fdb(ctx)
+                        except Exception:  # noqa: BLE001
+                            logger.debug("collect_fdb failed ip=%s", target)
+                        try:
+                            arp_entries = await plugin.collect_arp(ctx)
+                        except Exception:  # noqa: BLE001
+                            logger.debug("collect_arp failed ip=%s", target)
+
+                        # Smart Discovery: FDB/ARP/LLDP are first-class inventory facts,
+                        # collected and persisted for every device — not merely a
+                        # neighbor-inference fallback.
+                        if self._fdb_repo is not None:
+                            await self._fdb_repo.replace_for_device(device.id, fdb_entries)
+                        if self._arp_repo is not None:
+                            await self._arp_repo.replace_for_device(device.id, arp_entries)
+                        if self._neighbor_repo is not None:
+                            lldp_only = [n for n in lldp_neighbors if n.protocol in ("lldp", "cdp")]
+                            await self._neighbor_repo.replace_for_device(device.id, lldp_only)
+
+                        # Link building still prefers the strongest evidence available.
+                        if lldp_neighbors:
+                            neighbors = lldp_neighbors
+                            method = (
+                                DiscoveryMethod.LLDP
+                                if neighbors[0].protocol == "lldp"
+                                else DiscoveryMethod.CDP
+                            )
+                        elif fdb_entries:
+                            neighbors = self._neighbors_from_fdb(fdb_entries, device_index)
+                            method = DiscoveryMethod.FDB
+                        elif arp_entries:
+                            neighbors = self._neighbors_from_arp(arp_entries, device_index)
+                            method = DiscoveryMethod.ARP
+
+                    if want_full_detail:
+                        if self._vlan_repo is not None and inventory.vlans:
+                            await self._vlan_repo.replace_for_device(device.id, inventory.vlans)
+                        if self._route_repo is not None:
+                            raw_routes = inventory.attributes.get("routes") or []
+                            route_facts = [
+                                RouteFact(
+                                    destination=str(r.get("destination")),
+                                    next_hop=r.get("next_hop"),
+                                    interface=r.get("interface"),
+                                    protocol=r.get("protocol"),
+                                    metric=r.get("metric"),
+                                )
+                                for r in raw_routes
+                                if r.get("destination")
+                            ]
+                            if route_facts:
+                                await self._route_repo.replace_for_device(device.id, route_facts)
+
+                    created_links = 0
+                    if want_adjacency:
+                        created_links = await self._materialize_links(device, ifaces, neighbors, method)
                     job.stats["links"] = int(job.stats.get("links", 0)) + created_links
                     job.stats["inventoried"] = int(job.stats.get("inventoried", 0)) + 1
                     await self._jobs.update(job)
@@ -192,7 +338,7 @@ class DiscoveryOrchestrator:
                         job_id,
                         {"event": "device", "ip": target, "hostname": device.hostname, "vendor": device.vendor},
                     )
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     logger.exception("Discovery target failed ip=%s", target)
                     job.stats["errors"] = int(job.stats.get("errors", 0)) + 1
                     await self._jobs.update(job)
@@ -213,7 +359,7 @@ class DiscoveryOrchestrator:
             await self._jobs.update(job)
             await self._emit(job_id, {"event": "completed", "stats": job.stats})
             return job
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             if await self._is_cancelled(job_id):
                 job.status = JobStatus.CANCELLED
                 job.error = "Cancelled by operator"
@@ -249,29 +395,83 @@ class DiscoveryOrchestrator:
                 ordered.append(t)
         return ordered
 
-    async def _fingerprint(self, target: str, creds: dict[str, Any]) -> DeviceFingerprint:
+    async def _snmp_get_pair(self, target: str, snmp: dict[str, Any]) -> tuple[str | None, str | None]:
+        kwargs = {
+            "community": snmp.get("community", "public"),
+            "version": int(snmp.get("version", 2)),
+            "timeout": 2.0,
+            "username": snmp.get("username"),
+            "auth_key": snmp.get("auth_key"),
+            "priv_key": snmp.get("priv_key"),
+        }
+        sys_descr = await self._snmp.get(target, "1.3.6.1.2.1.1.1.0", **kwargs)
+        sys_oid = await self._snmp.get(target, "1.3.6.1.2.1.1.2.0", **kwargs) if sys_descr else None
+        return sys_descr, sys_oid
+
+    async def _fingerprint(
+        self,
+        target: str,
+        creds: dict[str, Any],
+        candidates: list[dict[str, Any]] | None = None,
+    ) -> tuple[DeviceFingerprint, dict[str, Any], str | None]:
+        """Fingerprint the target, rotating through Credential Manager candidates.
+
+        When `candidates` is provided (Credential Manager profiles attached to the
+        seed, tried most-specific-first, default public community last), each SNMP
+        candidate is tried until one answers; the winning profile is remembered so
+        the caller can persist "used credential profile" on the device record.
+        Falls back to the single merged `creds` bag when no candidates are given —
+        preserves prior behavior for callers that don't opt into rotation.
+        """
+        if candidates:
+            for cand in candidates:
+                snmp = cand.get("snmp")
+                if not snmp:
+                    continue
+                sys_descr, sys_oid = await self._snmp_get_pair(target, snmp)
+                if sys_descr:
+                    merged = {**creds, "snmp": snmp}
+                    return (
+                        DeviceFingerprint(management_ip=target, sys_descr=sys_descr, sys_object_id=sys_oid),
+                        merged,
+                        cand.get("_profile_id"),
+                    )
+            # Nothing answered — keep original merged creds for downstream SSH/API attempts.
+            return DeviceFingerprint(management_ip=target), creds, None
+
         snmp = creds.get("snmp", {})
-        sys_descr = await self._snmp.get(
-            target,
-            "1.3.6.1.2.1.1.1.0",
-            community=snmp.get("community", "public"),
-            version=int(snmp.get("version", 2)),
-            timeout=2.0,
-            username=snmp.get("username"),
-            auth_key=snmp.get("auth_key"),
-            priv_key=snmp.get("priv_key"),
+        sys_descr, sys_oid = await self._snmp_get_pair(target, snmp)
+        return DeviceFingerprint(management_ip=target, sys_descr=sys_descr, sys_object_id=sys_oid), creds, None
+
+    async def _create_unknown_device(self, target: str, inventory: Any | None) -> Device:
+        """Smart Discovery fallback: classify by OUI/reverse-DNS when no collector could talk to the host."""
+        mac = None
+        if inventory is not None and getattr(inventory, "management_mac", None):
+            mac = inventory.management_mac
+        if not mac:
+            mac = await resolve_local_mac(target)
+        oui_vendor = lookup_oui(mac)
+        hostname = await reverse_dns(target)
+        device_class = guess_device_type(oui_vendor, hostname=hostname)
+        return Device(
+            id=uuid4(),
+            hostname=hostname or f"unknown-{target.replace('.', '-')}",
+            vendor=oui_vendor or "unknown",
+            model="Unknown Device",
+            serial=None,
+            firmware=None,
+            os_version=None,
+            management_ip=target,
+            management_mac=mac,
+            platform=DevicePlatform.UNKNOWN,
+            status=DeviceStatus.UP,
+            attributes={
+                "auto_classified": True,
+                "detection_method": "icmp+oui",
+                "oui_vendor": oui_vendor,
+                "device_class": device_class,
+            },
         )
-        sys_oid = await self._snmp.get(
-            target,
-            "1.3.6.1.2.1.1.2.0",
-            community=snmp.get("community", "public"),
-            version=int(snmp.get("version", 2)),
-            timeout=2.0,
-            username=snmp.get("username"),
-            auth_key=snmp.get("auth_key"),
-            priv_key=snmp.get("priv_key"),
-        )
-        return DeviceFingerprint(management_ip=target, sys_descr=sys_descr, sys_object_id=sys_oid)
 
     def _build_context(self, target: str, creds: dict[str, Any], config: dict[str, Any]) -> CollectorContext:
         snmp = self._snmp
@@ -412,6 +612,13 @@ class DiscoveryOrchestrator:
                     remote_device.id, [*remote_ifaces, remote_iface]
                 )
             confidence = 1.0 if method in (DiscoveryMethod.LLDP, DiscoveryMethod.CDP) else 0.6 if method == DiscoveryMethod.FDB else 0.4
+            tagged = list((local.attributes or {}).get("tagged_vlans") or [])
+            all_vlans = ([local.native_vlan] if local.native_vlan else []) + [v for v in tagged if v not in ([local.native_vlan] if local.native_vlan else [])]
+            local_oper = (local.oper_status or "unknown").lower()
+            remote_oper = (remote_iface.oper_status or "unknown").lower()
+            link_status = "up" if local_oper == "up" and remote_oper == "up" else (
+                "down" if local_oper == "down" or remote_oper == "down" else "unknown"
+            )
             await self._links.upsert(
                 Link(
                     id=uuid4(),
@@ -422,9 +629,11 @@ class DiscoveryOrchestrator:
                     is_lacp=bool(local.lacp_group),
                     lacp_key=local.lacp_group,
                     is_trunk=local.is_trunk,
-                    vlans=[local.native_vlan] if local.native_vlan else [],
+                    vlans=all_vlans,
                     confidence=confidence,
                     last_confirmed_at=datetime.now(UTC),
+                    media=_guess_media(local.name),
+                    link_status=link_status,
                 )
             )
             count += 1

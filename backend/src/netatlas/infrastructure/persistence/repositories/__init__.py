@@ -10,14 +10,20 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from netatlas.domain.entities import Device, DiscoveryJob, DiscoverySeed, Interface, Link, Snapshot
+from netatlas.domain.ports import ArpEntry, FdbEntry, NeighborFact, RouteFact
 from netatlas.domain.value_objects import DevicePlatform, DeviceStatus, DiscoveryMethod, JobStatus
 from netatlas.infrastructure.persistence.models import (
+    ArpEntryModel,
     DeviceModel,
     DiscoveryJobModel,
     DiscoverySeedModel,
+    FdbEntryModel,
     InterfaceModel,
     LinkModel,
+    LldpNeighborModel,
+    RouteModel,
     SnapshotModel,
+    VlanModel,
 )
 
 
@@ -206,24 +212,7 @@ class SqlAlchemyLinkRepository:
 
     async def list_all(self) -> list[Link]:
         rows = (await self._session.execute(select(LinkModel))).scalars().all()
-        return [
-            Link(
-                id=r.id,
-                interface_a_id=r.interface_a_id,
-                interface_b_id=r.interface_b_id,
-                discovery_method=DiscoveryMethod(r.discovery_method)
-                if r.discovery_method in DiscoveryMethod._value2member_map_
-                else DiscoveryMethod.ARP,
-                speed_bps=r.speed_bps,
-                is_lacp=r.is_lacp,
-                lacp_key=r.lacp_key,
-                is_trunk=r.is_trunk,
-                vlans=list(r.vlans or []),
-                confidence=r.confidence,
-                last_confirmed_at=r.last_confirmed_at,
-            )
-            for r in rows
-        ]
+        return [_link_from_model(r) for r in rows]
 
     async def upsert(self, link: Link) -> Link:
         a, b = sorted([link.interface_a_id, link.interface_b_id], key=str)
@@ -243,10 +232,174 @@ class SqlAlchemyLinkRepository:
         existing.vlans = link.vlans
         existing.confidence = link.confidence
         existing.last_confirmed_at = link.last_confirmed_at or datetime.now(UTC)
+        existing.media = link.media
+        existing.link_status = link.link_status
+        existing.crc_errors = link.crc_errors
+        existing.drops = link.drops
+        existing.rx_utilization_pct = link.rx_utilization_pct
+        existing.tx_utilization_pct = link.tx_utilization_pct
+        existing.sfp_vendor = link.sfp_vendor
+        existing.sfp_model = link.sfp_model
+        existing.sfp_serial = link.sfp_serial
+        existing.rx_optical_dbm = link.rx_optical_dbm
+        existing.tx_optical_dbm = link.tx_optical_dbm
+        existing.temperature_c = link.temperature_c
+        existing.voltage = link.voltage
+        existing.health = link.health
+        existing.health_reasons = link.health_reasons
         await self._session.flush()
         link.interface_a_id = a
         link.interface_b_id = b
         return link
+
+
+def _link_from_model(r: LinkModel) -> Link:
+    return Link(
+        id=r.id,
+        interface_a_id=r.interface_a_id,
+        interface_b_id=r.interface_b_id,
+        discovery_method=DiscoveryMethod(r.discovery_method)
+        if r.discovery_method in DiscoveryMethod._value2member_map_
+        else DiscoveryMethod.ARP,
+        speed_bps=r.speed_bps,
+        is_lacp=r.is_lacp,
+        lacp_key=r.lacp_key,
+        is_trunk=r.is_trunk,
+        vlans=list(r.vlans or []),
+        confidence=r.confidence,
+        last_confirmed_at=r.last_confirmed_at,
+        media=getattr(r, "media", None) or "unknown",
+        link_status=getattr(r, "link_status", None) or "unknown",
+        crc_errors=getattr(r, "crc_errors", None),
+        drops=getattr(r, "drops", None),
+        rx_utilization_pct=getattr(r, "rx_utilization_pct", None),
+        tx_utilization_pct=getattr(r, "tx_utilization_pct", None),
+        sfp_vendor=getattr(r, "sfp_vendor", None),
+        sfp_model=getattr(r, "sfp_model", None),
+        sfp_serial=getattr(r, "sfp_serial", None),
+        rx_optical_dbm=getattr(r, "rx_optical_dbm", None),
+        tx_optical_dbm=getattr(r, "tx_optical_dbm", None),
+        temperature_c=getattr(r, "temperature_c", None),
+        voltage=getattr(r, "voltage", None),
+        health=getattr(r, "health", None) or "unknown",
+        health_reasons=list(getattr(r, "health_reasons", None) or []),
+    )
+
+
+class SqlAlchemyNeighborRepository:
+    """Persists LLDP/CDP adjacency facts (Smart Discovery enrichment)."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def replace_for_device(self, device_id: UUID, neighbors: list[NeighborFact]) -> None:
+        await self._session.execute(delete(LldpNeighborModel).where(LldpNeighborModel.device_id == device_id))
+        for n in neighbors:
+            self._session.add(
+                LldpNeighborModel(
+                    id=uuid4(),
+                    device_id=device_id,
+                    local_interface=n.local_interface,
+                    remote_hostname=n.remote_hostname,
+                    remote_interface=n.remote_interface,
+                    remote_chassis_id=n.remote_chassis_id,
+                    remote_mgmt_ip=n.remote_mgmt_ip,
+                    protocol=n.protocol,
+                    raw=n.attributes or {},
+                )
+            )
+        await self._session.flush()
+
+
+class SqlAlchemyFdbRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def replace_for_device(self, device_id: UUID, entries: list[FdbEntry]) -> None:
+        await self._session.execute(delete(FdbEntryModel).where(FdbEntryModel.device_id == device_id))
+        for e in entries:
+            if not e.mac:
+                continue
+            self._session.add(
+                FdbEntryModel(
+                    id=uuid4(),
+                    device_id=device_id,
+                    mac=e.mac,
+                    vlan_id=e.vlan_id,
+                    interface=e.interface or "unknown",
+                )
+            )
+        await self._session.flush()
+
+
+class SqlAlchemyArpRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def replace_for_device(self, device_id: UUID, entries: list[ArpEntry]) -> None:
+        await self._session.execute(delete(ArpEntryModel).where(ArpEntryModel.device_id == device_id))
+        for e in entries:
+            if not e.mac or not e.ip:
+                continue
+            self._session.add(
+                ArpEntryModel(
+                    id=uuid4(),
+                    device_id=device_id,
+                    ip=e.ip,
+                    mac=e.mac,
+                    interface=e.interface,
+                )
+            )
+        await self._session.flush()
+
+
+class SqlAlchemyVlanRepository:
+    """Per-device VLAN table used by the VLAN Explorer aggregation query."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def replace_for_device(self, device_id: UUID, vlans: list[dict[str, Any]]) -> None:
+        await self._session.execute(delete(VlanModel).where(VlanModel.device_id == device_id))
+        seen: set[int] = set()
+        for v in vlans:
+            try:
+                vid = int(v.get("vlan_id"))
+            except (TypeError, ValueError):
+                continue
+            if vid in seen:
+                continue
+            seen.add(vid)
+            self._session.add(
+                VlanModel(id=uuid4(), device_id=device_id, vlan_id=vid, name=v.get("name"))
+            )
+        await self._session.flush()
+
+
+class SqlAlchemyRouteRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def replace_for_device(self, device_id: UUID, routes: list[RouteFact]) -> None:
+        await self._session.execute(delete(RouteModel).where(RouteModel.device_id == device_id))
+        for r in routes:
+            if not r.destination:
+                continue
+            try:
+                self._session.add(
+                    RouteModel(
+                        id=uuid4(),
+                        device_id=device_id,
+                        destination=r.destination,
+                        next_hop=r.next_hop,
+                        interface=r.interface,
+                        protocol=r.protocol,
+                        metric=r.metric,
+                    )
+                )
+            except Exception:  # noqa: BLE001 — skip malformed CIDR from vendor parsing
+                continue
+        await self._session.flush()
 
 
 class SqlAlchemySnapshotRepository:

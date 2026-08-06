@@ -11,6 +11,7 @@ from uuid import uuid4
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from netatlas.infrastructure.observability.dispatcher import NotificationDispatcher
 from netatlas.infrastructure.persistence.models import (
     DeviceMetricModel,
     DeviceModel,
@@ -19,7 +20,6 @@ from netatlas.infrastructure.persistence.models import (
     TriggerDefinitionModel,
     TriggerEventModel,
 )
-from netatlas.infrastructure.observability.dispatcher import NotificationDispatcher
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ class TriggerEngine:
             if expr.get("min_severity") is not None and (event.severity or 7) > int(expr["min_severity"]):
                 continue
             pattern = expr.get("regex")
-            if pattern and not re.search(pattern, event.message or "", re.I):
+            if pattern and not re.search(pattern, event.message or "", re.IGNORECASE):
                 continue
             source_re = expr.get("source_ip_regex")
             if source_re and event.source_ip and not re.search(source_re, str(event.source_ip)):
@@ -87,6 +87,8 @@ class TriggerEngine:
             return await self._eval_absence(trigger, expr)
         if kind == "siem_correlation":
             return await self._eval_siem(trigger, expr)
+        if kind == "device_status":
+            return await self._eval_device_status(trigger, expr)
         if kind == "syslog_match":
             # evaluated on ingest path; keep current state during periodic pass
             return trigger.status == "problem", trigger.last_value, trigger.description or trigger.name
@@ -157,6 +159,37 @@ class TriggerEngine:
         count = int((await self._session.execute(stmt)).scalar_one())
         problem = count == 0
         return problem, str(count), f"Events in last {minutes}m: {count}"
+
+    async def _eval_device_status(
+        self, trigger: TriggerDefinitionModel, expr: dict[str, Any]
+    ) -> tuple[bool, str | None, str]:
+        """Device Offline: no discovery/metrics heartbeat (last_seen_at) within window."""
+        minutes = int(expr.get("for_minutes", 15))
+        since = datetime.now(UTC) - timedelta(minutes=minutes)
+        stmt = select(DeviceModel)
+        if trigger.device_id:
+            stmt = stmt.where(DeviceModel.id == trigger.device_id)
+        rows = (await self._session.execute(stmt)).scalars().all()
+        offline: list[str] = []
+        for d in rows:
+            last_seen = d.last_seen_at
+            recent_metric = (
+                await self._session.execute(
+                    select(func.max(DeviceMetricModel.collected_at)).where(
+                        DeviceMetricModel.device_id == d.id
+                    )
+                )
+            ).scalar_one_or_none()
+            latest = max([t for t in (last_seen, recent_metric) if t], default=None)
+            if latest is None:
+                continue
+            if latest < since:
+                offline.append(d.hostname or str(d.id))
+        if offline:
+            names = ", ".join(offline[:5])
+            more = f" (+{len(offline) - 5} more)" if len(offline) > 5 else ""
+            return True, str(len(offline)), f"Device(s) offline >{minutes}m: {names}{more}"
+        return False, "0", "All monitored devices reporting"
 
     async def _eval_siem(
         self, trigger: TriggerDefinitionModel, expr: dict[str, Any]
