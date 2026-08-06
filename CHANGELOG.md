@@ -36,6 +36,13 @@ All notable changes to NetAtlas are documented in this file.
   Empty, Device Offline (new `device_status` trigger kind), Optical RX Low.
 - OUI vendor lookup table + device-type heuristics (`infrastructure/collectors/base/oui.py`).
 
+### Changed — Enterprise Design System v2
+
+- Deep-navy glass shell, engineering-grid canvas, refined typography and card identity
+- NOC three-panel polish (explorer / map / inspector) with hover/selection glow
+- Device inspector gauges, VLAN chips, mini-topology; link-health edge colors on the map
+- Asset cache-bust `rel1` across all pages
+
 ## [1.2.0] - 2026-08-06
 
 ### Added
