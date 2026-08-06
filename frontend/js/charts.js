@@ -3,20 +3,20 @@
  */
 const Charts = (() => {
   const COLORS = {
-    accent: '#00B8FF',
-    accentDim: 'rgba(0, 184, 255, 0.15)',
-    info: '#3B82F6',
-    infoDim: 'rgba(59, 130, 246, 0.15)',
-    warning: '#FFB300',
-    warningDim: 'rgba(255, 179, 0, 0.15)',
-    danger: '#FF3D71',
-    dangerDim: 'rgba(255, 61, 113, 0.15)',
-    success: '#00E676',
-    successDim: 'rgba(0, 230, 118, 0.15)',
-    muted: '#94A3B8',
-    grid: '#1E293B',
-    text: '#94A3B8',
-    card: '#111827',
+    accent: '#29B6FF',
+    accentDim: 'rgba(41, 182, 255, 0.15)',
+    info: '#4C9AFF',
+    infoDim: 'rgba(76, 154, 255, 0.15)',
+    warning: '#FBB03B',
+    warningDim: 'rgba(251, 176, 59, 0.15)',
+    danger: '#FB5B78',
+    dangerDim: 'rgba(251, 91, 120, 0.15)',
+    success: '#34D399',
+    successDim: 'rgba(52, 211, 153, 0.15)',
+    muted: '#8B99B0',
+    grid: '#1C2536',
+    text: '#8B99B0',
+    card: '#0D1220',
   };
 
   const defaults = {
