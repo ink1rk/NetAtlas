@@ -5,12 +5,16 @@ from __future__ import annotations
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import String, cast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from netatlas.api.deps import device_to_dict, get_db, require_permission
+from netatlas.infrastructure.collectors.base.metric_catalog import METRIC_CATALOG
 from netatlas.infrastructure.persistence.models import (
+    CredentialProfileModel,
+    DeviceCredentialModel,
     DeviceMetricModel,
     DeviceModel,
     InterfaceModel,
@@ -21,8 +25,13 @@ from netatlas.infrastructure.persistence.repositories import (
     SqlAlchemyDeviceRepository,
     SqlAlchemyInterfaceRepository,
 )
+from netatlas.infrastructure.security.credential_resolver import bind_device_credentials
 
 router = APIRouter(tags=["devices"])
+
+
+class DeviceCredentialsBody(BaseModel):
+    credential_profile_ids: list[UUID] = Field(default_factory=list)
 
 
 @router.get("/devices")
@@ -146,17 +155,124 @@ async def device_metrics(
             .limit(100)
         )
     ).scalars().all()
+    items = [
+        {
+            "cpu_percent": r.cpu_percent,
+            "memory_percent": r.memory_percent,
+            "temperature_c": r.temperature_c,
+            "extras": r.extras or {},
+            "collected_at": r.collected_at.isoformat() if r.collected_at else None,
+            "timestamp": r.collected_at.isoformat() if r.collected_at else None,
+        }
+        for r in rows
+    ]
     return {
+        "items": items,
+        "history": list(reversed(items)),
+        "latest": items[0] if items else None,
+    }
+
+
+@router.get("/devices/{device_id}/credentials")
+async def list_device_credentials(
+    device_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    _user: Annotated[Any, Depends(require_permission("credentials:read"))],
+) -> dict[str, Any]:
+    if not await session.get(DeviceModel, device_id):
+        raise HTTPException(status_code=404, detail="Device not found")
+    links = (
+        await session.execute(
+            select(DeviceCredentialModel, CredentialProfileModel)
+            .join(CredentialProfileModel, CredentialProfileModel.id == DeviceCredentialModel.credential_profile_id)
+            .where(DeviceCredentialModel.device_id == device_id)
+        )
+    ).all()
+    return {
+        "device_id": str(device_id),
         "items": [
             {
-                "cpu_percent": r.cpu_percent,
-                "memory_percent": r.memory_percent,
-                "temperature_c": r.temperature_c,
-                "collected_at": r.collected_at.isoformat() if r.collected_at else None,
+                "id": str(link.id),
+                "credential_profile_id": str(profile.id),
+                "name": profile.name,
+                "protocol": profile.protocol,
             }
-            for r in rows
-        ]
+            for link, profile in links
+        ],
     }
+
+
+@router.put("/devices/{device_id}/credentials")
+async def set_device_credentials(
+    device_id: UUID,
+    body: DeviceCredentialsBody,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    _user: Annotated[Any, Depends(require_permission("credentials:write"))],
+) -> dict[str, Any]:
+    if not await session.get(DeviceModel, device_id):
+        raise HTTPException(status_code=404, detail="Device not found")
+    existing = (
+        await session.execute(
+            select(DeviceCredentialModel).where(DeviceCredentialModel.device_id == device_id)
+        )
+    ).scalars().all()
+    for row in existing:
+        await session.delete(row)
+    await session.flush()
+    created = await bind_device_credentials(session, device_id, body.credential_profile_ids)
+    await session.commit()
+    return {"device_id": str(device_id), "linked": created, "credential_profile_ids": [str(x) for x in body.credential_profile_ids]}
+
+
+@router.delete("/devices/{device_id}/credentials/{profile_id}", status_code=204)
+async def detach_device_credential(
+    device_id: UUID,
+    profile_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    _user: Annotated[Any, Depends(require_permission("credentials:write"))],
+) -> None:
+    row = (
+        await session.execute(
+            select(DeviceCredentialModel).where(
+                DeviceCredentialModel.device_id == device_id,
+                DeviceCredentialModel.credential_profile_id == profile_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Credential link not found")
+    await session.delete(row)
+    await session.commit()
+
+
+@router.get("/monitoring/metrics-catalog")
+async def metrics_catalog(
+    _user: Annotated[Any, Depends(require_permission("monitoring:read"))],
+) -> dict[str, Any]:
+    return {"items": METRIC_CATALOG}
+
+
+@router.post("/monitoring/collect-now", status_code=202)
+async def collect_metrics_now(
+    background_tasks: BackgroundTasks,
+    _user: Annotated[Any, Depends(require_permission("monitoring:read"))],
+) -> dict[str, Any]:
+    """Kick an immediate metrics sweep (does not wait for Celery beat)."""
+
+    async def _run() -> None:
+        from netatlas.workers.celery_app import _collect_metrics
+
+        await _collect_metrics()
+
+    # Prefer Celery when available
+    try:
+        from netatlas.workers.tasks import collect_metrics
+
+        collect_metrics.delay()
+        return {"status": "queued", "dispatch": "celery"}
+    except Exception:
+        background_tasks.add_task(_run)
+        return {"status": "queued", "dispatch": "inline"}
 
 
 @router.get("/devices/{device_id}/neighbors")

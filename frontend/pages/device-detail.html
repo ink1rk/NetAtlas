@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=di2">
+  <link rel="stylesheet" href="/css/app.css?v=mon1">
+  <link rel="stylesheet" href="/css/discovery.css?v=mon1">
   <script>
     try {
       var t = localStorage.getItem('netatlas_theme');
@@ -17,17 +18,16 @@
       document.documentElement.setAttribute('data-bs-theme', 'dark');
     }
   </script>
-
 </head>
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
   <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
-  <script src="/js/i18n.js?v=di2"></script>
-  <script src="/js/api.js?v=di2"></script>
-  <script src="/js/auth.js?v=di2"></script>
-  <script src="/js/charts.js?v=di2"></script>
-<script src="/js/ui.js?v=di2"></script>
-  <script src="/js/app.js?v=di2"></script>
+  <script src="/js/i18n.js?v=mon1"></script>
+  <script src="/js/api.js?v=mon1"></script>
+  <script src="/js/auth.js?v=mon1"></script>
+  <script src="/js/charts.js?v=mon1"></script>
+  <script src="/js/ui.js?v=mon1"></script>
+  <script src="/js/app.js?v=mon1"></script>
   <script>
     const deviceId = App.queryParam('id');
     if (!deviceId) window.location.href = '/pages/devices.html';
@@ -59,6 +59,7 @@
                 <button class="tab-btn active" data-tab="interfaces">${I18n.t('device.tab_ifaces')}</button>
                 <button class="tab-btn" data-tab="neighbors">${I18n.t('device.tab_neighbors')}</button>
                 <button class="tab-btn" data-tab="metrics">${I18n.t('device.tab_metrics')}</button>
+                <button class="tab-btn" data-tab="credentials">${I18n.t('device.tab_credentials')}</button>
               </div>
               <div id="tab-content"><p class="empty-state">${I18n.t('common.loading')}</p></div>
             </div>
@@ -70,7 +71,7 @@
           btn.classList.add('active');
           loadTab(btn.dataset.tab, el);
         }));
-        loadTab('interfaces', el);
+        loadTab(App.queryParam('tab') || 'interfaces', el);
       } catch (err) {
         App.showError(el, err.message);
       }
@@ -107,19 +108,75 @@
           </tr>`).join('')}</tbody></table>`;
         } else if (tab === 'metrics') {
           const metrics = await Api.getDeviceMetrics(deviceId);
-          content.innerHTML = '<div class="chart-wrap tall"><canvas id="metrics-chart"></canvas></div>';
-          const history = metrics.history || metrics.samples || [];
-          const labels = history.map((h) => App.formatDate(h.timestamp || h.ts));
-          const cpu = history.map((h) => h.cpu_percent ?? h.cpu);
-          const mem = history.map((h) => h.memory_percent ?? h.memory);
-          if (labels.length) {
-            Charts.lineChart('metrics-chart', labels, [
-              { label: I18n.t('device.cpu'), data: cpu, borderColor: Charts.COLORS.accent, backgroundColor: Charts.COLORS.accentDim, tension: 0.3, fill: true },
-              { label: I18n.t('device.memory'), data: mem, borderColor: Charts.COLORS.info, backgroundColor: Charts.COLORS.infoDim, tension: 0.3, fill: true },
-            ]);
-          } else {
-            content.innerHTML = `<p class="empty-state">${I18n.t('device.no_metrics')}</p>`;
+          const history = metrics.history || metrics.items || [];
+          const latest = metrics.latest || history[history.length - 1];
+          if (!history.length) {
+            content.innerHTML = `
+              <p class="empty-state">${I18n.t('device.no_metrics')}</p>
+              <p class="form-hint">${I18n.t('device.no_creds')}</p>
+              <button class="btn-na btn-na-primary" id="btn-poll">${I18n.t('cred.collect_now')}</button>
+            `;
+            document.getElementById('btn-poll')?.addEventListener('click', async () => {
+              try { await Api.collectMetricsNow(); Ui.toast(I18n.t('cred.collect_ok'), 'ok'); }
+              catch (err) { Ui.toast(err.message, 'error'); }
+            });
+            return;
           }
+          content.innerHTML = `
+            <div class="row g-2 mb-3">
+              <div class="col-md-3"><div class="stat-block"><div class="stat-value">${latest?.cpu_percent ?? '—'}</div><div class="stat-label">CPU %</div></div></div>
+              <div class="col-md-3"><div class="stat-block"><div class="stat-value">${latest?.memory_percent ?? '—'}</div><div class="stat-label">Memory %</div></div></div>
+              <div class="col-md-3"><div class="stat-block"><div class="stat-value">${latest?.extras?.interfaces_down ?? '—'}</div><div class="stat-label">IF down</div></div></div>
+              <div class="col-md-3"><div class="stat-block"><div class="stat-value">${latest?.extras?.uptime_seconds ?? '—'}</div><div class="stat-label">Uptime s</div></div></div>
+            </div>
+            <div class="chart-wrap tall"><canvas id="metrics-chart"></canvas></div>
+            <button class="btn-na btn-na-secondary mt-3" id="btn-poll">${I18n.t('cred.collect_now')}</button>
+          `;
+          const labels = history.map((h) => App.formatDate(h.timestamp || h.collected_at));
+          const cpu = history.map((h) => h.cpu_percent ?? null);
+          const mem = history.map((h) => h.memory_percent ?? null);
+          Charts.lineChart('metrics-chart', labels, [
+            { label: I18n.t('device.cpu'), data: cpu, borderColor: Charts.COLORS.accent, backgroundColor: Charts.COLORS.accentDim, tension: 0.3, fill: true },
+            { label: I18n.t('device.memory'), data: mem, borderColor: Charts.COLORS.info, backgroundColor: Charts.COLORS.infoDim, tension: 0.3, fill: true },
+          ]);
+          document.getElementById('btn-poll')?.addEventListener('click', async () => {
+            try { await Api.collectMetricsNow(); Ui.toast(I18n.t('cred.collect_ok'), 'ok'); setTimeout(() => loadTab('metrics', el), 2000); }
+            catch (err) { Ui.toast(err.message, 'error'); }
+          });
+        } else if (tab === 'credentials') {
+          const [linked, all] = await Promise.all([
+            Api.getDeviceCredentials(deviceId),
+            Api.listCredentials().catch(() => []),
+          ]);
+          const selected = new Set((linked.items || []).map((i) => i.credential_profile_id));
+          if (!all.length) {
+            content.innerHTML = `<p class="empty-state">${I18n.t('disc.cred_none')}</p><a class="btn-na btn-na-primary" href="/pages/credentials.html">${I18n.t('nav.credentials')}</a>`;
+            return;
+          }
+          content.innerHTML = `
+            <p class="form-hint mb-3">${I18n.t('device.no_creds')}</p>
+            <div class="disc-seed-list mb-3">
+              ${all.map((c) => `
+                <label class="disc-seed" style="cursor:pointer">
+                  <span class="disc-seed__main">
+                    <input type="checkbox" class="dev-cred-check" value="${App.escapeHtml(c.id)}" ${selected.has(c.id) ? 'checked' : ''}>
+                    <span>
+                      <div class="disc-seed__cidr">${App.escapeHtml(c.name)}</div>
+                      <div class="disc-seed__label">${App.escapeHtml(c.protocol)}</div>
+                    </span>
+                  </span>
+                </label>
+              `).join('')}
+            </div>
+            <button class="btn-na btn-na-primary" id="btn-save-creds">${I18n.t('device.cred_save')}</button>
+          `;
+          document.getElementById('btn-save-creds')?.addEventListener('click', async () => {
+            const ids = [...content.querySelectorAll('.dev-cred-check:checked')].map((el) => el.value);
+            try {
+              await Api.setDeviceCredentials(deviceId, { credential_profile_ids: ids });
+              Ui.toast(I18n.t('device.cred_saved'), 'ok');
+            } catch (err) { Ui.toast(err.message, 'error'); }
+          });
         }
       } catch (err) {
         content.innerHTML = `<div class="alert-na error">${App.escapeHtml(err.message)}</div>`;

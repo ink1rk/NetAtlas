@@ -191,6 +191,20 @@ async def _seed_default_triggers(session: AsyncSession) -> None:
             "expression": {"metric": "cpu_percent", "op": "gt", "threshold": 90, "for_minutes": 5},
         },
         {
+            "name": "High Memory",
+            "description": "Memory percent above 90 for 5 minutes (HOST-RESOURCES-MIB)",
+            "severity": "high",
+            "kind": "metric_threshold",
+            "expression": {"metric": "memory_percent", "op": "gt", "threshold": 90, "for_minutes": 5},
+        },
+        {
+            "name": "Interfaces down count",
+            "description": "More than 0 interfaces with ifOperStatus=down",
+            "severity": "average",
+            "kind": "metric_threshold",
+            "expression": {"metric": "interfaces_down", "op": "gt", "threshold": 0, "for_minutes": 2},
+        },
+        {
             "name": "Interface operationally down",
             "description": "Admin-up interface with oper-status down",
             "severity": "average",
