@@ -142,7 +142,7 @@ async def _run_discovery(job_id: UUID) -> dict[str, Any]:
         return {"id": str(job.id), "status": job.status.value, "stats": job.stats}
 
 
-def _needs_identity_enrichment(device: Any) -> bool:
+def _needs_identity_enrichment(device: Any, *, interface_count: int | None = None) -> bool:
     """True when discovery left a thin ICMP-only stub that SNMP can still fill in."""
     vendor = str(getattr(device, "vendor", "") or "").lower()
     model = str(getattr(device, "model", "") or "").lower()
@@ -153,6 +153,9 @@ def _needs_identity_enrichment(device: Any) -> bool:
         return True
     # ICMP stub without sysDescr — try SNMP once credentials exist.
     if not attrs.get("sys_descr") and model in {"unknown", "unknown device", ""}:
+        return True
+    # Known device but zero interfaces → IF-MIB never landed; retry inventory.
+    if interface_count is not None and interface_count == 0:
         return True
     return False
 
@@ -252,9 +255,9 @@ async def _enrich_device_identity(
             id=uuid4(),
             device_id=device.id,
             name=str(i.get("name")),
-            if_index=i.get("if_index"),
+            if_index=str(i["if_index"]) if i.get("if_index") is not None else None,
             description=i.get("description"),
-            mac=i.get("mac"),
+            mac=i.get("mac") if i.get("mac") else None,
             mtu=i.get("mtu"),
             duplex=i.get("duplex"),
             speed_bps=i.get("speed_bps"),
@@ -271,6 +274,12 @@ async def _enrich_device_identity(
     ]
     if ifaces:
         await SqlAlchemyInterfaceRepository(session).replace_for_device(device.id, ifaces)
+    # Persist verified profile for next rediscovery / metrics.
+    winning = (ctx.credentials or {}).get("_profile_id")
+    if winning:
+        attrs = dict(device.attributes or {})
+        attrs["verified_credential_profile_id"] = str(winning)
+        device.attributes = attrs
     return True
 
 
@@ -284,10 +293,13 @@ async def _collect_metrics() -> dict[str, Any]:
     from netatlas.infrastructure.collectors.base.registry import build_default_registry
     from netatlas.infrastructure.collectors.base.snmp_transport import SnmpTransport
     from netatlas.infrastructure.collectors.base.ssh_transport import SshTransport
+    from sqlalchemy import func
+
     from netatlas.infrastructure.persistence.models import (
         DeviceCredentialModel,
         DeviceMetricModel,
         DeviceModel,
+        InterfaceModel,
     )
     from netatlas.infrastructure.persistence.session import SessionLocal
     from netatlas.infrastructure.security.credential_resolver import (
@@ -305,15 +317,24 @@ async def _collect_metrics() -> dict[str, Any]:
 
     async with SessionLocal() as session:
         vault = AesGcmSecretVault(get_settings().master_key_b64.get_secret_value())
-        # Prefer devices with explicit credentials; also poll others with default public
-        linked_ids = {
-            row.device_id
-            for row in (await session.execute(select(DeviceCredentialModel.device_id))).scalars().all()
-        }
+        # Prefer devices with explicit credentials; also poll others with default public.
+        # select(column) + scalars() already yields UUID values — do NOT access .device_id.
+        linked_ids = set(
+            (await session.execute(select(DeviceCredentialModel.device_id))).scalars().all()
+        )
         global_snmp_ids = await list_snmp_profile_ids(session)
         global_candidates = await load_profile_candidates(
             session, vault, global_snmp_ids, default_snmp=True
         )
+        iface_counts = {
+            row[0]: int(row[1])
+            for row in (
+                await session.execute(
+                    select(InterfaceModel.device_id, func.count())
+                    .group_by(InterfaceModel.device_id)
+                )
+            ).all()
+        }
         devices = (await session.execute(select(DeviceModel).order_by(DeviceModel.hostname))).scalars().all()
         for device in devices:
             if not device.management_ip:
@@ -322,7 +343,7 @@ async def _collect_metrics() -> dict[str, Any]:
             stats["devices"] += 1
             try:
                 if device.id in linked_ids:
-                    creds = await load_device_credentials(session, vault, device.id, default_snmp=False)
+                    creds = await load_device_credentials(session, vault, device.id, default_snmp=True)
                     # Rotation bag for enrichment when device has multiple SNMP profiles.
                     device_links = (
                         await session.execute(
@@ -348,9 +369,12 @@ async def _collect_metrics() -> dict[str, Any]:
                 async def ssh_exec(host: str, command: str, **kwargs: Any) -> str:
                     return await ssh.exec(host, command, **kwargs)
 
+                iface_count = iface_counts.get(device.id, 0)
+                needs_enrich = _needs_identity_enrichment(device, interface_count=iface_count)
+
                 # Pick first SNMP candidate that answers sysDescr for thin devices.
                 winning_creds = creds
-                if _needs_identity_enrichment(device) and candidates:
+                if needs_enrich and candidates:
                     for cand in candidates:
                         snmp_c = cand.get("snmp") or {}
                         probe = await snmp.get(
@@ -376,7 +400,7 @@ async def _collect_metrics() -> dict[str, Any]:
                     ssh_exec=ssh_exec,
                 )
 
-                if _needs_identity_enrichment(device):
+                if needs_enrich:
                     try:
                         if await _enrich_device_identity(session, device, ctx, registry, snmp=snmp):
                             stats["enriched"] += 1

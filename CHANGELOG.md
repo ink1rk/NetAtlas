@@ -2,6 +2,17 @@
 
 All notable changes to NetAtlas are documented in this file.
 
+## [1.3.3] - 2026-08-07
+
+### Fixed — Metrics crash blocked all SNMP enrichment
+
+- `Collect metrics / enrich` crashed with
+  `'asyncpg.pgproto.pgproto.UUID' object has no attribute 'device_id'`
+  as soon as any credential was assigned — so interfaces/identity never filled
+- Discovery no longer wipes interfaces when an IF-MIB walk returns empty
+- FDB/ARP skip unparseable MAC strings (invalid `MACADDR` no longer aborts the job)
+- Enrichment also retries devices that have **zero interfaces**
+
 ## [1.3.2] - 2026-08-07
 
 ### Fixed — Install / update path for production servers
