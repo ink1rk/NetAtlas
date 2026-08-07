@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from netatlas.api.deps import device_to_dict, get_db, require_permission
 from netatlas.infrastructure.collectors.base.metric_catalog import METRIC_CATALOG
+from netatlas.infrastructure.observability.metrics_history import build_metric_series, metric_row_dict
 from netatlas.infrastructure.persistence.models import (
     CredentialProfileModel,
     DeviceCredentialModel,
@@ -19,6 +21,7 @@ from netatlas.infrastructure.persistence.models import (
     DeviceModel,
     InterfaceModel,
     IpAddressModel,
+    MetricPollLogModel,
     VlanModel,
 )
 from netatlas.infrastructure.persistence.repositories import (
@@ -146,31 +149,76 @@ async def device_metrics(
     device_id: UUID,
     session: Annotated[AsyncSession, Depends(get_db)],
     _user: Annotated[Any, Depends(require_permission("monitoring:read"))],
+    from_ts: datetime | None = Query(None, alias="from"),
+    to_ts: datetime | None = Query(None, alias="to"),
+    limit: int = Query(500, ge=1, le=5000),
+    keys: str | None = Query(
+        None,
+        description="Comma-separated metric keys for series (cpu_percent,if_in_bps,…)",
+    ),
 ) -> dict[str, Any]:
-    rows = (
-        await session.execute(
-            select(DeviceMetricModel)
-            .where(DeviceMetricModel.device_id == device_id)
-            .order_by(DeviceMetricModel.collected_at.desc())
-            .limit(100)
-        )
+    if not await session.get(DeviceModel, device_id):
+        raise HTTPException(status_code=404, detail="Device not found")
+    stmt = select(DeviceMetricModel).where(DeviceMetricModel.device_id == device_id)
+    if from_ts is not None:
+        stmt = stmt.where(DeviceMetricModel.collected_at >= from_ts)
+    if to_ts is not None:
+        stmt = stmt.where(DeviceMetricModel.collected_at <= to_ts)
+    rows_desc = (
+        await session.execute(stmt.order_by(DeviceMetricModel.collected_at.desc()).limit(limit))
     ).scalars().all()
-    items = [
-        {
-            "cpu_percent": r.cpu_percent,
-            "memory_percent": r.memory_percent,
-            "temperature_c": r.temperature_c,
-            "extras": r.extras or {},
-            "collected_at": r.collected_at.isoformat() if r.collected_at else None,
-            "timestamp": r.collected_at.isoformat() if r.collected_at else None,
-        }
-        for r in rows
-    ]
+    items = [metric_row_dict(r) for r in rows_desc]
+    history = list(reversed(items))
+    rows_asc = list(reversed(rows_desc))
+    key_list = [k.strip() for k in keys.split(",") if k.strip()] if keys else None
+    built = build_metric_series(rows_asc, key_list)
     return {
+        "device_id": str(device_id),
+        "from": from_ts.isoformat() if from_ts else None,
+        "to": to_ts.isoformat() if to_ts else None,
+        "count": len(items),
         "items": items,
-        "history": list(reversed(items)),
+        "history": history,
         "latest": items[0] if items else None,
+        "series": built["series"],
+        "interfaces": built["interfaces"],
     }
+
+
+def _poll_log_dict(row: MetricPollLogModel) -> dict[str, Any]:
+    return {
+        "id": str(row.id),
+        "run_id": str(row.run_id) if row.run_id else None,
+        "device_id": str(row.device_id) if row.device_id else None,
+        "started_at": row.started_at.isoformat() if row.started_at else None,
+        "finished_at": row.finished_at.isoformat() if row.finished_at else None,
+        "status": row.status,
+        "phase": row.phase,
+        "message": row.message,
+        "error": row.error,
+        "metrics_written": row.metrics_written,
+        "duration_ms": row.duration_ms,
+        "detail": row.detail or {},
+    }
+
+
+@router.get("/devices/{device_id}/poll-logs")
+async def device_poll_logs(
+    device_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    _user: Annotated[Any, Depends(require_permission("monitoring:read"))],
+    limit: int = Query(100, ge=1, le=1000),
+    status: str | None = None,
+) -> dict[str, Any]:
+    if not await session.get(DeviceModel, device_id):
+        raise HTTPException(status_code=404, detail="Device not found")
+    stmt = select(MetricPollLogModel).where(MetricPollLogModel.device_id == device_id)
+    if status:
+        stmt = stmt.where(MetricPollLogModel.status == status)
+    rows = (
+        await session.execute(stmt.order_by(MetricPollLogModel.started_at.desc()).limit(limit))
+    ).scalars().all()
+    return {"device_id": str(device_id), "items": [_poll_log_dict(r) for r in rows]}
 
 
 @router.get("/devices/{device_id}/credentials")
@@ -250,6 +298,103 @@ async def metrics_catalog(
     _user: Annotated[Any, Depends(require_permission("monitoring:read"))],
 ) -> dict[str, Any]:
     return {"items": METRIC_CATALOG}
+
+
+@router.get("/monitoring/fleet-metrics")
+async def fleet_metrics(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    _user: Annotated[Any, Depends(require_permission("monitoring:read"))],
+    limit: int = Query(200, ge=1, le=500),
+) -> dict[str, Any]:
+    """Latest metric sample per device for the monitoring fleet table."""
+    devices = (
+        await session.execute(
+            select(DeviceModel)
+            .where(DeviceModel.management_ip.is_not(None))
+            .order_by(DeviceModel.hostname)
+            .limit(limit)
+        )
+    ).scalars().all()
+    items: list[dict[str, Any]] = []
+    for device in devices:
+        latest = (
+            await session.execute(
+                select(DeviceMetricModel)
+                .where(DeviceMetricModel.device_id == device.id)
+                .order_by(DeviceMetricModel.collected_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        last_poll = (
+            await session.execute(
+                select(MetricPollLogModel)
+                .where(MetricPollLogModel.device_id == device.id)
+                .order_by(MetricPollLogModel.started_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        row = {
+            "device_id": str(device.id),
+            "hostname": device.hostname,
+            "management_ip": str(device.management_ip) if device.management_ip else None,
+            "vendor": device.vendor,
+            "platform": device.platform,
+            "status": device.status,
+            "last_seen_at": device.last_seen_at.isoformat() if device.last_seen_at else None,
+            "latest": metric_row_dict(latest) if latest else None,
+            "last_poll": _poll_log_dict(last_poll) if last_poll else None,
+        }
+        items.append(row)
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/monitoring/poll-logs")
+async def list_poll_logs(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    _user: Annotated[Any, Depends(require_permission("monitoring:read"))],
+    device_id: UUID | None = None,
+    status: str | None = None,
+    phase: str | None = None,
+    run_id: UUID | None = None,
+    from_ts: datetime | None = Query(None, alias="from"),
+    to_ts: datetime | None = Query(None, alias="to"),
+    limit: int = Query(100, ge=1, le=1000),
+    include_sweeps: bool = Query(True, description="Include run-level summary rows"),
+) -> dict[str, Any]:
+    """Activity log of how metrics polling / enrichment ran (Zabbix-like audit)."""
+    stmt = select(MetricPollLogModel)
+    if device_id is not None:
+        stmt = stmt.where(MetricPollLogModel.device_id == device_id)
+    elif not include_sweeps:
+        stmt = stmt.where(MetricPollLogModel.device_id.is_not(None))
+    if status:
+        stmt = stmt.where(MetricPollLogModel.status == status)
+    if phase:
+        stmt = stmt.where(MetricPollLogModel.phase == phase)
+    if run_id is not None:
+        stmt = stmt.where(MetricPollLogModel.run_id == run_id)
+    if from_ts is not None:
+        stmt = stmt.where(MetricPollLogModel.started_at >= from_ts)
+    if to_ts is not None:
+        stmt = stmt.where(MetricPollLogModel.started_at <= to_ts)
+    rows = (
+        await session.execute(stmt.order_by(MetricPollLogModel.started_at.desc()).limit(limit))
+    ).scalars().all()
+
+    device_ids = {r.device_id for r in rows if r.device_id}
+    hostnames: dict[UUID, str] = {}
+    if device_ids:
+        for d in (
+            await session.execute(select(DeviceModel).where(DeviceModel.id.in_(device_ids)))
+        ).scalars().all():
+            hostnames[d.id] = d.hostname
+
+    items = []
+    for r in rows:
+        item = _poll_log_dict(r)
+        item["hostname"] = hostnames.get(r.device_id) if r.device_id else (r.detail or {}).get("hostname") or "— sweep —"
+        items.append(item)
+    return {"items": items, "total": len(items)}
 
 
 @router.post("/monitoring/collect-now", status_code=202)

@@ -278,6 +278,33 @@ class DeviceMetricModel(Base):
     collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class MetricPollLogModel(Base):
+    """Per-device (and sweep-summary) log of how metrics polling ran."""
+
+    __tablename__ = "metric_poll_logs"
+    __table_args__ = (
+        Index("ix_metric_poll_logs_device", "device_id"),
+        Index("ix_metric_poll_logs_started", "started_at"),
+        Index("ix_metric_poll_logs_status", "status"),
+        Index("ix_metric_poll_logs_run", "run_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    run_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), index=True)
+    device_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("devices.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="ok")
+    phase: Mapped[str] = mapped_column(String(64), nullable=False, default="collect")
+    message: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    metrics_written: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    detail: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+
+
 class CredentialProfileModel(Base, TimestampMixin):
     __tablename__ = "credential_profiles"
 

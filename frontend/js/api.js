@@ -121,7 +121,8 @@ const Api = (() => {
     getDevice: (id) => request(`/devices/${id}`),
     getDeviceInterfaces: (id) => request(`/devices/${id}/interfaces`),
     getDeviceNeighbors: (id) => request(`/devices/${id}/neighbors`),
-    getDeviceMetrics: (id) => request(`/devices/${id}/metrics`),
+    getDeviceMetrics: (id, params) => request(`/devices/${id}/metrics` + qs(params || {})),
+    getDevicePollLogs: (id, params) => request(`/devices/${id}/poll-logs` + qs(params || {})),
     getDeviceFdb: (id) => request(`/devices/${id}/fdb`),
     getDeviceArp: (id) => request(`/devices/${id}/arp`),
     getDeviceRoutes: (id) => request(`/devices/${id}/routes`),
@@ -154,6 +155,8 @@ const Api = (() => {
     setDeviceCredentials: (id, data) => request(`/devices/${id}/credentials`, { method: 'PUT', body: JSON.stringify(data) }),
     detachDeviceCredential: (id, profileId) => request(`/devices/${id}/credentials/${profileId}`, { method: 'DELETE' }),
     metricsCatalog: () => request('/monitoring/metrics-catalog'),
+    fleetMetrics: (params) => request('/monitoring/fleet-metrics' + qs(params || {})),
+    listPollLogs: (params) => request('/monitoring/poll-logs' + qs(params || {})),
     collectMetricsNow: () => request('/monitoring/collect-now', { method: 'POST', body: '{}' }),
     createTrigger: (data) => request('/observability/triggers', { method: 'POST', body: JSON.stringify(data) }),
 

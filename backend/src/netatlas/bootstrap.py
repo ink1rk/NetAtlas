@@ -91,6 +91,27 @@ _SCHEMA_PATCHES = (
     "ALTER TABLE links ADD COLUMN IF NOT EXISTS health_reasons JSONB NOT NULL DEFAULT '[]'::jsonb",
     # VLAN Explorer — explicit gateway (in addition to auto-aggregated networks)
     "ALTER TABLE vlan_objects ADD COLUMN IF NOT EXISTS gateway VARCHAR(64)",
+    # Metrics poll activity log (Zabbix-like collection audit trail)
+    """
+    CREATE TABLE IF NOT EXISTS metric_poll_logs (
+        id UUID PRIMARY KEY,
+        run_id UUID,
+        device_id UUID REFERENCES devices(id) ON DELETE CASCADE,
+        started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        finished_at TIMESTAMPTZ,
+        status VARCHAR(32) NOT NULL DEFAULT 'ok',
+        phase VARCHAR(64) NOT NULL DEFAULT 'collect',
+        message TEXT,
+        error TEXT,
+        metrics_written INTEGER NOT NULL DEFAULT 0,
+        duration_ms INTEGER,
+        detail JSONB NOT NULL DEFAULT '{}'::jsonb
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_metric_poll_logs_device ON metric_poll_logs (device_id)",
+    "CREATE INDEX IF NOT EXISTS ix_metric_poll_logs_started ON metric_poll_logs (started_at)",
+    "CREATE INDEX IF NOT EXISTS ix_metric_poll_logs_status ON metric_poll_logs (status)",
+    "CREATE INDEX IF NOT EXISTS ix_metric_poll_logs_run ON metric_poll_logs (run_id)",
 )
 
 
