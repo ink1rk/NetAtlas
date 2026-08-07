@@ -5,7 +5,11 @@ from __future__ import annotations
 from netatlas.application.use_cases.discovery import _is_generic_signal
 from netatlas.domain.ports import InventoryFacts
 from netatlas.domain.value_objects import DevicePlatform
-from netatlas.infrastructure.collectors.base.snmp_inventory import _model_from_sys_descr
+from netatlas.infrastructure.collectors.base.snmp_inventory import (
+    _model_from_sys_descr,
+    is_ram_hrstorage,
+    parse_timeticks_seconds,
+)
 from netatlas.infrastructure.collectors.base.snmp_transport import _clean_snmp_value
 
 
@@ -38,6 +42,20 @@ def test_is_generic_signal_treats_nosuch_model_as_empty() -> None:
         interfaces=[{"name": ""}],
     )
     assert _is_generic_signal(facts) is True
+
+
+def test_parse_timeticks_seconds() -> None:
+    assert parse_timeticks_seconds("12345600") == 123456
+    assert parse_timeticks_seconds("Timeticks: (12345600) 1 day, 10:17:36.00") == 123456
+    assert parse_timeticks_seconds("(900)") == 9
+    assert parse_timeticks_seconds(None) is None
+
+
+def test_is_ram_hrstorage_mikrotik_main_memory() -> None:
+    # RouterOS exposes RAM as hrStorageOther (.1) named "main memory"
+    assert is_ram_hrstorage("1.3.6.1.2.1.25.2.1.1", "main memory") is True
+    assert is_ram_hrstorage("1.3.6.1.2.1.25.2.1.2", "Physical Memory") is True
+    assert is_ram_hrstorage("1.3.6.1.2.1.25.2.1.4", "disk: system") is False
 
 
 def test_is_generic_signal_false_when_interfaces_present() -> None:

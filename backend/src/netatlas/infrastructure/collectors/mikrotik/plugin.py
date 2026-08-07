@@ -186,6 +186,7 @@ class MikrotikCollector:
 
     async def collect_metrics(self, ctx: CollectorContext) -> MetricsSample:
         sample = await snmp_metrics(ctx)
+        # SSH fills gaps when SNMP health OIDs are disabled / filtered.
         if ctx.ssh_exec and ctx.credentials.get("ssh"):
             ssh = ctx.credentials["ssh"]
             out = await ctx.ssh_exec(
@@ -198,8 +199,17 @@ class MikrotikCollector:
                 timeout=ctx.timeouts.get("ssh", 20.0),
             )
             cpu = re.search(r"cpu-load:\s*(\d+)", out or "")
-            if cpu:
+            if cpu and sample.cpu_percent is None:
                 sample.cpu_percent = float(cpu.group(1))
+                sample.extras["cpu_source"] = "ssh.resource"
+            free = re.search(r"free-memory:\s*(\d+)", out or "")
+            total = re.search(r"total-memory:\s*(\d+)", out or "")
+            if free and total and sample.memory_percent is None and int(total.group(1)) > 0:
+                sample.memory_percent = round(100.0 * (1 - int(free.group(1)) / int(total.group(1))), 2)
+                sample.extras["memory_source"] = "ssh.resource"
+            up = re.search(r"uptime:\s*([^\n]+)", out or "")
+            if up and sample.extras.get("uptime_seconds") is None:
+                sample.extras["uptime_raw_ssh"] = up.group(1).strip()
         return sample
 
 

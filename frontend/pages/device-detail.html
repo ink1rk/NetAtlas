@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=mon1">
-  <link rel="stylesheet" href="/css/discovery.css?v=mon1">
+  <link rel="stylesheet" href="/css/app.css?v=mon2">
+  <link rel="stylesheet" href="/css/discovery.css?v=mon2">
   <script>
     try {
       var t = localStorage.getItem('netatlas_theme');
@@ -22,12 +22,12 @@
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
   <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
-  <script src="/js/i18n.js?v=mon1"></script>
-  <script src="/js/api.js?v=mon1"></script>
-  <script src="/js/auth.js?v=mon1"></script>
-  <script src="/js/charts.js?v=mon1"></script>
-  <script src="/js/ui.js?v=mon1"></script>
-  <script src="/js/app.js?v=mon1"></script>
+  <script src="/js/i18n.js?v=mon2"></script>
+  <script src="/js/api.js?v=mon2"></script>
+  <script src="/js/auth.js?v=mon2"></script>
+  <script src="/js/charts.js?v=mon2"></script>
+  <script src="/js/ui.js?v=mon2"></script>
+  <script src="/js/app.js?v=mon2"></script>
   <script>
     const deviceId = App.queryParam('id');
     if (!deviceId) window.location.href = '/pages/devices.html';
@@ -147,21 +147,29 @@
           `;
           const cpuSeries = metrics.series?.cpu_percent || [];
           const memSeries = metrics.series?.memory_percent || [];
-          const labels = (cpuSeries.length ? cpuSeries : history).map((h) => App.formatDate(h.t || h.timestamp || h.collected_at));
-          const cpu = cpuSeries.length ? cpuSeries.map((p) => p.v) : history.map((h) => h.cpu_percent ?? null);
-          const mem = memSeries.length ? memSeries.map((p) => p.v) : history.map((h) => h.memory_percent ?? null);
           Charts.destroyAll();
-          Charts.lineChart('metrics-chart', labels, [
-            { label: I18n.t('device.cpu'), data: cpu, borderColor: Charts.COLORS.accent, backgroundColor: Charts.COLORS.accentDim, tension: 0.3, fill: true, pointRadius: 0 },
-            { label: I18n.t('device.memory'), data: mem, borderColor: Charts.COLORS.info, backgroundColor: Charts.COLORS.infoDim, tension: 0.3, fill: true, pointRadius: 0 },
-          ]);
-          const tin = (metrics.series?.if_in_bps || []).map((p) => p.v);
-          const tout = (metrics.series?.if_out_bps || []).map((p) => p.v);
-          const tlabels = (metrics.series?.if_in_bps || metrics.series?.if_out_bps || []).map((p) => App.formatDate(p.t));
-          if (tlabels.length) {
+          const chartHost = document.getElementById('metrics-chart')?.parentElement;
+          if (!cpuSeries.length && !memSeries.length) {
+            if (chartHost) {
+              chartHost.innerHTML = `<p class="empty-state">${I18n.t('mon.empty_core_metrics')}</p>`;
+            }
+          } else {
+            const labels = (cpuSeries.length ? cpuSeries : memSeries).map((h) => App.formatDate(h.t));
+            Charts.lineChart('metrics-chart', labels, [
+              { label: I18n.t('device.cpu'), data: cpuSeries.map((p) => p.v), borderColor: Charts.COLORS.accent, backgroundColor: Charts.COLORS.accentDim, tension: 0.3, fill: true, pointRadius: 0 },
+              { label: I18n.t('device.memory'), data: memSeries.map((p) => p.v), borderColor: Charts.COLORS.info, backgroundColor: Charts.COLORS.infoDim, tension: 0.3, fill: true, pointRadius: 0 },
+            ]);
+          }
+          const tin = metrics.series?.if_in_bps || [];
+          const tout = metrics.series?.if_out_bps || [];
+          const trafficHost = document.getElementById('metrics-traffic')?.parentElement;
+          if (!tin.length && !tout.length) {
+            if (trafficHost) trafficHost.innerHTML = `<p class="empty-state text-secondary">${I18n.t('mon.no_traffic_yet')}</p>`;
+          } else {
+            const tlabels = (tin.length ? tin : tout).map((p) => App.formatDate(p.t));
             Charts.lineChart('metrics-traffic', tlabels, [
-              { label: 'in bps', data: tin, borderColor: Charts.COLORS.success, backgroundColor: Charts.COLORS.successDim, tension: 0.25, fill: true, pointRadius: 0 },
-              { label: 'out bps', data: tout, borderColor: Charts.COLORS.warning, backgroundColor: Charts.COLORS.warningDim, tension: 0.25, fill: true, pointRadius: 0 },
+              { label: 'in bps', data: tin.map((p) => p.v), borderColor: Charts.COLORS.success, backgroundColor: Charts.COLORS.successDim, tension: 0.25, fill: true, pointRadius: 0 },
+              { label: 'out bps', data: tout.map((p) => p.v), borderColor: Charts.COLORS.warning, backgroundColor: Charts.COLORS.warningDim, tension: 0.25, fill: true, pointRadius: 0 },
             ]);
           }
           const logsEl = document.getElementById('device-poll-logs');
@@ -178,8 +186,12 @@
             </tbody></table>`
             : `<p class="empty-state">${I18n.t('mon.no_poll_logs')}</p>`;
           document.getElementById('btn-poll')?.addEventListener('click', async () => {
-            try { await Api.collectMetricsNow(); Ui.toast(I18n.t('cred.collect_ok'), 'ok'); setTimeout(() => loadTab('metrics', el), 2000); }
-            catch (err) { Ui.toast(err.message, 'error'); }
+            try {
+              const stats = await Api.collectMetricsNow();
+              Ui.toast(`${I18n.t('cred.collect_ok')}: ok=${stats.ok ?? 0}, err=${stats.errors ?? 0}`, 'ok');
+              // Reload whole page so last_seen / interfaces header refresh after enrich.
+              setTimeout(() => { window.location.reload(); }, 800);
+            } catch (err) { Ui.toast(err.message, 'error'); }
           });
         } else if (tab === 'adjacency') {
           const [fdb, arp, routes] = await Promise.all([

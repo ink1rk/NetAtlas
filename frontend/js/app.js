@@ -2,7 +2,7 @@
  * NetAtlas shared application shell & utilities
  */
 const App = (() => {
-  const ASSET_V = 'mon1';
+  const ASSET_V = 'mon2';
   const THEME_KEY = 'netatlas_theme';
   const SIDEBAR_KEY = 'netatlas_sidebar_collapsed';
 

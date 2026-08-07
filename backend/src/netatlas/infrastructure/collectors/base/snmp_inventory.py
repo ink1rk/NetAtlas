@@ -160,9 +160,7 @@ async def snmp_inventory(ctx: CollectorContext, *, vendor_hint: str = "unknown")
             sys_object_id=sys_oid,
         )
     )
-    uptime_seconds = None
-    if uptime_ticks and uptime_ticks.isdigit():
-        uptime_seconds = int(uptime_ticks) // 100
+    uptime_seconds = parse_timeticks_seconds(uptime_ticks)
 
     # Prefer detected platform vendor over forced "generic" hint so inventory UI
     # shows mikrotik/eltex/… even when the Generic collector handled the host.
@@ -250,6 +248,49 @@ async def snmp_arp(ctx: CollectorContext) -> list[ArpEntry]:
     return entries
 
 
+# MikroTik enterprise health (MIKROTIK-MIB) — RouterOS often skips HOST-RESOURCES CPU table.
+MIKROTIK_HL_TEMPERATURE = "1.3.6.1.4.1.14988.1.1.3.10.0"  # often 0.1 °C
+MIKROTIK_HL_CPU_LOAD = "1.3.6.1.4.1.14988.1.1.3.11.0"  # percent
+MIKROTIK_HL_MEMORY_USAGE = "1.3.6.1.4.1.14988.1.1.3.12.0"  # percent
+MIKROTIK_HL_CPU_TEMPERATURE = "1.3.6.1.4.1.14988.1.1.3.6.0"  # often 0.1 °C
+
+
+def parse_timeticks_seconds(raw: str | None) -> int | None:
+    """Convert SNMPv2-MIB::sysUpTime Timeticks to seconds."""
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    # Common forms: "12345600", "Timeticks: (12345600) 1 day, …", "(12345600)"
+    import re
+
+    m = re.search(r"\((\d+)\)", text)
+    if m:
+        return int(m.group(1)) // 100
+    m = re.search(r"(\d+)", text)
+    if m:
+        return int(m.group(1)) // 100
+    try:
+        return int(float(text) / 100.0)
+    except ValueError:
+        return None
+
+
+def is_ram_hrstorage(typ: str, descr: str | None = None) -> bool:
+    """HOST-RESOURCES RAM row: hrStorageRam (.2) or MikroTik 'main memory' as Other (.1)."""
+    t = str(typ or "").strip()
+    d = (descr or "").lower().strip()
+    # hrStorageRam OID — avoid false positive on ".2.1.25" substring matches.
+    if t.endswith("25.2.1.2") or t.endswith(".2.1.2") or t in {"2", "hrStorageRam"}:
+        return True
+    if d in {"main memory", "physical memory", "ram", "memory"}:
+        return True
+    if "memory" in d and not any(x in d for x in ("disk", "flash", "swap", "virtual")):
+        return True
+    return False
+
+
 async def snmp_metrics(ctx: CollectorContext) -> MetricsSample:
     """Collect core MIB metrics for monitoring / trigger evaluation."""
     assert ctx.snmp_get and ctx.snmp_walk
@@ -269,13 +310,16 @@ async def snmp_metrics(ctx: CollectorContext) -> MetricsSample:
         if loads:
             cpu_percent = sum(loads) / len(loads)
             extras["cpu_cores_sampled"] = len(loads)
+            extras["cpu_source"] = "host-resources"
         else:
             cpu = await ctx.snmp_get(ctx.target_ip, "1.3.6.1.2.1.25.3.3.1.2.1", **params)
-            cpu_percent = float(cpu) if cpu else None
+            if cpu:
+                cpu_percent = float(cpu)
+                extras["cpu_source"] = "host-resources.1"
     except Exception:
         cpu_percent = None
 
-    # Memory — hrStorage RAM entries (type .2.1.2)
+    # Memory — hrStorage RAM / MikroTik "main memory" (type Other .1.2.1.1)
     memory_percent: float | None = None
     try:
         types = {
@@ -290,8 +334,13 @@ async def snmp_metrics(ctx: CollectorContext) -> MetricsSample:
             oid.rsplit(".", 1)[-1]: val
             for oid, val in await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.25.2.3.1.6", **params)
         }
+        descrs = {
+            oid.rsplit(".", 1)[-1]: val
+            for oid, val in await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.25.2.3.1.3", **params)
+        }
+        # Prefer explicit RAM type; also accept MikroTik index 65536 / "main memory".
         for idx, typ in types.items():
-            if "2.1.2" not in str(typ) and not str(typ).endswith(".2"):
+            if not (is_ram_hrstorage(str(typ), descrs.get(idx)) or idx in {"65536", "2"}):
                 continue
             try:
                 size_u = float(sizes.get(idx) or 0)
@@ -301,16 +350,34 @@ async def snmp_metrics(ctx: CollectorContext) -> MetricsSample:
             if size_u > 0:
                 memory_percent = round((used_u / size_u) * 100.0, 2)
                 extras["memory_hrstorage_index"] = idx
+                extras["memory_source"] = "host-resources"
                 break
     except Exception:
         memory_percent = None
 
+    # MikroTik proprietary health — fills CPU/RAM when HOST-RESOURCES is empty/wrong.
+    try:
+        mt_cpu = await ctx.snmp_get(ctx.target_ip, MIKROTIK_HL_CPU_LOAD, **params)
+        if mt_cpu is not None and cpu_percent is None:
+            val = float(mt_cpu)
+            if 0 <= val <= 100:
+                cpu_percent = val
+                extras["cpu_source"] = "mikrotik.mtxrHlProcessorLoad"
+        mt_mem = await ctx.snmp_get(ctx.target_ip, MIKROTIK_HL_MEMORY_USAGE, **params)
+        if mt_mem is not None and memory_percent is None:
+            val = float(mt_mem)
+            if 0 <= val <= 100:
+                memory_percent = val
+                extras["memory_source"] = "mikrotik.mtxrHlMemoryUsage"
+    except Exception:
+        pass
+
     # Uptime
     try:
         uptime_raw = await ctx.snmp_get(ctx.target_ip, SNMP_SYS_UPTIME, **params)
-        if uptime_raw:
-            # timeticks → seconds
-            extras["uptime_seconds"] = int(float(uptime_raw) / 100.0)
+        uptime_s = parse_timeticks_seconds(uptime_raw)
+        if uptime_s is not None:
+            extras["uptime_seconds"] = uptime_s
     except Exception:
         pass
 
@@ -323,6 +390,7 @@ async def snmp_metrics(ctx: CollectorContext) -> MetricsSample:
         extras["interfaces_down"] = down
     except Exception:
         pass
+
     def _sum_walk(rows: list[tuple[str, str]]) -> int:
         total = 0
         for _, v in rows:
@@ -347,8 +415,12 @@ async def snmp_metrics(ctx: CollectorContext) -> MetricsSample:
     except Exception:
         pass
     try:
-        in_oct = await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.10", **params)
-        out_oct = await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.16", **params)
+        # Prefer 64-bit counters when present (switches with high traffic).
+        in_oct = await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.31.1.1.1.6", **params)  # ifHCInOctets
+        out_oct = await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.31.1.1.1.10", **params)
+        if not in_oct:
+            in_oct = await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.10", **params)
+            out_oct = await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.16", **params)
         extras["if_in_octets"] = _sum_walk(in_oct)
         extras["if_out_octets"] = _sum_walk(out_oct)
     except Exception:
@@ -381,17 +453,18 @@ async def _snmp_temperature_c(
     """Best-effort temperature: MikroTik health OIDs, then ENTITY-SENSOR-MIB (°C)."""
     assert ctx.snmp_get and ctx.snmp_walk
 
-    # MikroTik RouterOS health (processor / board) — often degrees or tenths.
-    for oid, label in (
-        ("1.3.6.1.4.1.14988.1.1.3.10.0", "mikrotik.processor"),
-        ("1.3.6.1.4.1.14988.1.1.3.11.0", "mikrotik.board"),
+    # NOTE: .11.0 is CPU load (%), NOT temperature — do not use it here.
+    for oid, label, tenths in (
+        (MIKROTIK_HL_TEMPERATURE, "mikrotik.mtxrHlTemperature", True),
+        (MIKROTIK_HL_CPU_TEMPERATURE, "mikrotik.mtxrHlCpuTemperature", True),
     ):
         try:
             raw = await ctx.snmp_get(ctx.target_ip, oid, **params)
             if not raw:
                 continue
             val = float(raw)
-            if val > 200:
+            # RouterOS usually reports 0.1 °C units (e.g. 452 → 45.2 °C).
+            if tenths and val > 120:
                 val = val / 10.0
             if 0 < val < 120:
                 extras["temperature_source"] = label
@@ -430,8 +503,12 @@ async def _snmp_temperature_c(
             except ValueError:
                 prec = 0
             scale = str(scales.get(idx) or "9").strip()  # 9 = units
+            try:
+                scale_n = int(float(scale)) if scale.replace(".", "", 1).isdigit() else 9
+            except ValueError:
+                scale_n = 9
             # entPhySensorScale: 9=units, 8=deci, 7=centi, 6=milli …
-            scale_div = {9: 1.0, 8: 10.0, 7: 100.0, 6: 1000.0}.get(int(float(scale)) if scale.isdigit() else 9, 1.0)
+            scale_div = {9: 1.0, 8: 10.0, 7: 100.0, 6: 1000.0}.get(scale_n, 1.0)
             val = raw_v / (10**prec if prec > 0 else 1) / scale_div
             if 0 < val < 120:
                 temps.append(val)

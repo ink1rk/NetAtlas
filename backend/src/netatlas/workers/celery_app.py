@@ -184,7 +184,7 @@ async def _enrich_device_identity(
     from uuid import uuid4
 
     from netatlas.domain.entities import Interface
-    from netatlas.domain.ports import DeviceFingerprint
+    from netatlas.domain.ports import CollectorContext, DeviceFingerprint
     from netatlas.domain.value_objects import DevicePlatform, DeviceStatus
     from netatlas.infrastructure.collectors.base.registry import fingerprint_platform
     from netatlas.infrastructure.persistence.repositories import SqlAlchemyInterfaceRepository
@@ -219,13 +219,29 @@ async def _enrich_device_identity(
     )
     plugin = registry.resolve(fingerprint)
     inventory = await plugin.collect_inventory(ctx)
-    thin = (
-        inventory is None
-        or (
-            str(getattr(inventory, "model", "") or "").lower() in {"unknown", ""}
-            and not (getattr(inventory, "interfaces", None) or [])
+    iface_list = list(getattr(inventory, "interfaces", None) or []) if inventory else []
+    # Retry IF-MIB once with a longer timeout — CRS/large switches often miss the first walk.
+    if inventory is not None and not iface_list:
+        slow_timeouts = dict(ctx.timeouts or {})
+        slow_timeouts["snmp"] = max(float(slow_timeouts.get("snmp") or 2.0), 12.0)
+        slow_ctx = CollectorContext(
+            target_ip=ctx.target_ip,
+            credentials=ctx.credentials,
+            timeouts=slow_timeouts,
+            snmp_get=ctx.snmp_get,
+            snmp_walk=ctx.snmp_walk,
+            ssh_exec=ctx.ssh_exec,
         )
-    )
+        try:
+            retry_inv = await plugin.collect_inventory(slow_ctx)
+            if retry_inv and (retry_inv.interfaces or []):
+                inventory = retry_inv
+                iface_list = list(retry_inv.interfaces or [])
+        except Exception as retry_exc:  # noqa: BLE001
+            logger.warning("IF-MIB retry failed device=%s: %s", device.hostname or device.id, retry_exc)
+
+    model_s = str(getattr(inventory, "model", "") or "").lower() if inventory else ""
+    thin = inventory is None or (model_s in {"unknown", ""} and not iface_list)
     if thin:
         # Still try sysName-only upgrade when SNMP answers at all.
         if inventory and inventory.hostname and inventory.hostname != str(device.management_ip):
@@ -257,6 +273,7 @@ async def _enrich_device_identity(
     attrs["sys_object_id"] = sys_oid
     attrs.pop("auto_classified", None)
     attrs["enriched_from_metrics"] = True
+    attrs["interface_count_enriched"] = len(iface_list)
     device.attributes = attrs
 
     ifaces = [
@@ -278,7 +295,7 @@ async def _enrich_device_identity(
             lacp_group=i.get("lacp_group"),
             attributes={"tagged_vlans": i["tagged_vlans"]} if i.get("tagged_vlans") else {},
         )
-        for i in (inventory.interfaces or [])
+        for i in iface_list
         if i.get("name")
     ]
     if ifaces:
@@ -438,10 +455,12 @@ async def _collect_metrics() -> dict[str, Any]:
                     else:
                         poll.detail["snmp_probe"] = "no_response"
 
+                # CRS / large IF tables need >2s; short timeouts produce empty samples
+                # that still get stored as "ok" with null CPU/memory.
                 ctx = CollectorContext(
                     target_ip=str(device.management_ip),
                     credentials=winning_creds,
-                    timeouts={"snmp": 2.0, "ssh": 15.0, "icmp": 1.0},
+                    timeouts={"snmp": 8.0, "ssh": 15.0, "icmp": 1.0},
                     snmp_get=snmp_get,
                     snmp_walk=snmp_walk,
                     ssh_exec=ssh_exec,
@@ -498,9 +517,29 @@ async def _collect_metrics() -> dict[str, Any]:
                 if (device.status or "").lower() in ("unknown", "down", ""):
                     device.status = "up"
                 poll.metrics_written = 1
-                poll.status = "ok"
-                poll.message = "Metrics stored"
                 poll.phase = "store"
+                has_core = any(
+                    v is not None
+                    for v in (
+                        sample.cpu_percent,
+                        sample.memory_percent,
+                        sample.temperature_c,
+                        extras.get("uptime_seconds"),
+                    )
+                )
+                has_if = bool(extras.get("interfaces_total")) or bool(sample.interface_counters)
+                if has_core:
+                    poll.status = "ok"
+                    poll.message = "Metrics stored"
+                    stats["ok"] += 1
+                elif has_if:
+                    poll.status = "partial"
+                    poll.message = "Partial sample — IF counters only (no CPU/memory/uptime)"
+                    stats["ok"] += 1
+                else:
+                    poll.status = "partial"
+                    poll.message = "Empty sample — SNMP returned no usable metrics"
+                    stats["ok"] += 1
                 poll.detail.update(
                     {
                         "enriched": enriched,
@@ -514,9 +553,11 @@ async def _collect_metrics() -> dict[str, Any]:
                         "if_out_errors": extras.get("if_out_errors"),
                         "if_counters": len(sample.interface_counters or []),
                         "temperature_source": extras.get("temperature_source"),
+                        "cpu_source": extras.get("cpu_source"),
+                        "memory_source": extras.get("memory_source"),
+                        "has_core_metrics": has_core,
                     }
                 )
-                stats["ok"] += 1
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Metrics failed device=%s: %s", device.hostname or device.id, exc)
                 poll.status = "error"
