@@ -40,6 +40,7 @@ from netatlas.infrastructure.collectors.base.icmp import icmp_probe
 from netatlas.infrastructure.collectors.base.local_arp import resolve_local_mac, reverse_dns
 from netatlas.infrastructure.collectors.base.oui import guess_device_type, lookup_oui
 from netatlas.infrastructure.collectors.base.registry import CollectorRegistry, fingerprint_platform
+from netatlas.infrastructure.collectors.base.snmp_inventory import _normalize_mac
 from netatlas.infrastructure.collectors.base.snmp_transport import SnmpTransport
 from netatlas.infrastructure.collectors.base.ssh_transport import SshTransport
 
@@ -68,17 +69,37 @@ def _snmp_empty(value: Any) -> bool:
 
 
 def _is_generic_signal(inventory: Any) -> bool:
-    """True when a collector returned essentially no usable signal (SNMP closed)."""
-    vendor = str(getattr(inventory, "vendor", "") or "").lower()
-    model = str(getattr(inventory, "model", "") or "").lower()
-    if _snmp_empty(model):
-        model = "unknown"
+    """True only when SNMP/API truly returned nothing usable (closed / wrong community).
+
+    A GenericSnmpCollector always reports vendor=generic — that alone must NOT discard
+    a successful sysName/sysDescr/IF-MIB inventory.
+    """
+    if inventory is None:
+        return True
+    hostname = str(getattr(inventory, "hostname", "") or "").strip()
+    attrs = getattr(inventory, "attributes", None) or {}
+    sys_descr = str(attrs.get("sys_descr") or getattr(inventory, "os_version", "") or "").strip()
+    model = str(getattr(inventory, "model", "") or "").strip()
     named_ifaces = [
         i
         for i in (getattr(inventory, "interfaces", None) or [])
         if isinstance(i, dict) and str(i.get("name") or "").strip() and not _snmp_empty(i.get("name"))
     ]
-    return vendor in {"generic", "unknown", ""} and model in {"unknown", ""} and not named_ifaces
+    if named_ifaces:
+        return False
+    if sys_descr and not _snmp_empty(sys_descr):
+        return False
+    if model and not _snmp_empty(model) and model.lower() not in {"unknown", "unknown device"}:
+        return False
+    if hostname:
+        try:
+            import ipaddress
+
+            ipaddress.ip_address(hostname)
+            return True  # hostname is just the IP → no real identity
+        except ValueError:
+            return False  # real sysName without ifaces still counts as signal
+    return True
 
 
 _FIBER_HINTS = ("sfp", "fiber", "tengig", "twentyfive", "fortygig", "hundredgig", "gpon", "dwdm")
@@ -125,6 +146,7 @@ class DiscoveryOrchestrator:
         arp: ArpRepository | None = None,
         vlans: VlanRepository | None = None,
         routes: RouteRepository | None = None,
+        session_rollback: Any | None = None,
     ) -> None:
         self._jobs = jobs
         self._seeds = seeds
@@ -144,6 +166,8 @@ class DiscoveryOrchestrator:
         self._arp_repo = arp
         self._vlan_repo = vlans
         self._route_repo = routes
+        # Recover the SQLAlchemy session after a per-target flush failure
+        self._session_rollback = session_rollback
         self._snmp = SnmpTransport()
         self._ssh = SshTransport()
 
@@ -237,6 +261,8 @@ class DiscoveryOrchestrator:
                         # Still bind credentials so metrics / next rediscovery can authenticate.
                         if self._on_device:
                             try:
+                                await self._on_device(device, seeds, None)
+                            except TypeError:
                                 await self._on_device(device, seeds)
                             except Exception:
                                 logger.exception("on_device callback failed ip=%s", target)
@@ -262,7 +288,7 @@ class DiscoveryOrchestrator:
                         firmware=inventory.firmware,
                         os_version=inventory.os_version,
                         management_ip=target,
-                        management_mac=inventory.management_mac,
+                        management_mac=_normalize_mac(inventory.management_mac),
                         platform=inventory.platform
                         if inventory.platform != DevicePlatform.UNKNOWN
                         else fingerprint_platform(fingerprint),
@@ -273,31 +299,41 @@ class DiscoveryOrchestrator:
                     device_index[target] = device
                     if self._on_device:
                         try:
+                            await self._on_device(device, seeds, verified_profile_id)
+                        except TypeError:
+                            # Backward-compatible callback signature (device, seeds)
                             await self._on_device(device, seeds)
                         except Exception:
                             logger.exception("on_device callback failed ip=%s", target)
-                    ifaces = [
-                        Interface(
-                            id=uuid4(),
-                            device_id=device.id,
-                            name=str(i.get("name")),
-                            if_index=str(i["if_index"]) if i.get("if_index") is not None else None,
-                            description=i.get("description"),
-                            mac=i.get("mac"),
-                            mtu=i.get("mtu"),
-                            duplex=i.get("duplex"),
-                            speed_bps=i.get("speed_bps"),
-                            poe_enabled=bool(i.get("poe_enabled", False)),
-                            admin_status=str(i.get("admin_status") or "unknown"),
-                            oper_status=str(i.get("oper_status") or "unknown"),
-                            is_trunk=bool(i.get("is_trunk", False)),
-                            native_vlan=i.get("native_vlan"),
-                            lacp_group=i.get("lacp_group"),
-                            attributes={"tagged_vlans": i["tagged_vlans"]} if i.get("tagged_vlans") else {},
+                    ifaces = []
+                    for i in inventory.interfaces:
+                        if not i.get("name"):
+                            continue
+                        native = i.get("native_vlan")
+                        try:
+                            native_vlan = int(native) if native is not None and str(native).strip() != "" else None
+                        except (TypeError, ValueError):
+                            native_vlan = None
+                        ifaces.append(
+                            Interface(
+                                id=uuid4(),
+                                device_id=device.id,
+                                name=str(i.get("name")),
+                                if_index=str(i["if_index"]) if i.get("if_index") is not None else None,
+                                description=i.get("description"),
+                                mac=_normalize_mac(i.get("mac")),
+                                mtu=i.get("mtu"),
+                                duplex=i.get("duplex"),
+                                speed_bps=i.get("speed_bps"),
+                                poe_enabled=bool(i.get("poe_enabled", False)),
+                                admin_status=str(i.get("admin_status") or "unknown"),
+                                oper_status=str(i.get("oper_status") or "unknown"),
+                                is_trunk=bool(i.get("is_trunk", False)),
+                                native_vlan=native_vlan,
+                                lacp_group=i.get("lacp_group"),
+                                attributes={"tagged_vlans": i["tagged_vlans"]} if i.get("tagged_vlans") else {},
+                            )
                         )
-                        for i in inventory.interfaces
-                        if i.get("name")
-                    ]
                     # Never wipe a previous good inventory with an empty IF-MIB walk.
                     if ifaces:
                         await self._interfaces.replace_for_device(device.id, ifaces)
@@ -378,9 +414,21 @@ class DiscoveryOrchestrator:
                     )
                 except Exception as exc:
                     logger.exception("Discovery target failed ip=%s", target)
+                    if self._session_rollback:
+                        try:
+                            await self._session_rollback()
+                            # Re-load job after rollback so subsequent updates succeed.
+                            refreshed = await self._jobs.get(job_id)
+                            if refreshed is not None:
+                                job = refreshed
+                        except Exception:
+                            logger.exception("session rollback failed after target ip=%s", target)
                     job.stats["errors"] = int(job.stats.get("errors", 0)) + 1
-                    await self._jobs.update(job)
-                    await self._emit(job_id, {"event": "error", "ip": target, "error": str(exc)})
+                    try:
+                        await self._jobs.update(job)
+                        await self._emit(job_id, {"event": "error", "ip": target, "error": str(exc)})
+                    except Exception:
+                        logger.exception("failed to persist error stats for ip=%s", target)
 
             if await self._is_cancelled(job_id):
                 job.status = JobStatus.CANCELLED

@@ -978,7 +978,7 @@ const Noc = (() => {
                 <tr>
                   <td class="mono">${App.escapeHtml(i.name || i.if_name || '—')}</td>
                   <td>${App.statusBadge(i.oper_status || i.status || 'unknown')}</td>
-                  <td class="mono">${App.escapeHtml(String(i.speed || i.speed_mbps || '—'))}</td>
+                  <td class="mono">${App.escapeHtml(App.formatBps ? App.formatBps(i.speed_bps || i.speed || i.speed_mbps) : String(i.speed_bps || i.speed || i.speed_mbps || '—'))}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -1125,15 +1125,29 @@ const Noc = (() => {
     state.status.wsStatus = 'live';
     renderStatusBar();
     try {
-      const [devicesPage, graph, jobs, alerts, snaps, obs, audit] = await Promise.all([
-        Api.listDevices({ page_size: 200 }).catch(() => ({ items: [], total: 0 })),
-        Api.topologyGraph().catch(() => ({ nodes: [], edges: [] })),
-        Api.listJobs().catch(() => []),
-        Api.get('/observability/alerts', { page_size: 20 }).catch(() => null),
-        Api.listSnapshots().catch(() => []),
-        Api.get('/observability/status').catch(() => null),
-        Api.auditTimeline({ limit: 30 }).catch(() => ({ items: [] })),
+      const settled = await Promise.allSettled([
+        Api.listDevices({ page_size: 200 }),
+        Api.topologyGraph(),
+        Api.listJobs(),
+        Api.get('/observability/alerts', { page_size: 20 }),
+        Api.listSnapshots(),
+        Api.get('/observability/status'),
+        Api.auditTimeline({ limit: 30 }),
       ]);
+      const val = (i, fallback) => (settled[i].status === 'fulfilled' ? settled[i].value : fallback);
+      const devicesPage = val(0, { items: [], total: 0 });
+      const graph = val(1, { nodes: [], edges: [] });
+      const jobs = val(2, []);
+      const alerts = val(3, null);
+      const snaps = val(4, []);
+      const obs = val(5, null);
+      const audit = val(6, { items: [] });
+      const loadErrors = settled
+        .map((r, i) => (r.status === 'rejected' ? (r.reason?.message || String(r.reason)) : null))
+        .filter(Boolean);
+      if (loadErrors.length && typeof Ui !== 'undefined' && Ui.toast) {
+        Ui.toast(loadErrors[0], 'error');
+      }
 
       state.devices = devicesPage.items || [];
       state.graph = graph;

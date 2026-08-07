@@ -185,7 +185,7 @@ class UnifiCollector:
                     "duplex": "full" if port.get("full_duplex") else None,
                     "poe_enabled": bool(port.get("poe_enable")),
                     "is_trunk": bool(port.get("portconf_id") and "profile" in str(port.get("portconf_id"))),
-                    "native_vlan": port.get("vlan") or port.get("native_networkconf_id"),
+                    "native_vlan": int(port["vlan"]) if str(port.get("vlan") or "").isdigit() else None,
                     "lacp_group": str(port.get("lag_member")) if port.get("lag_member") else None,
                 }
             )

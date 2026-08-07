@@ -164,9 +164,18 @@ async def snmp_inventory(ctx: CollectorContext, *, vendor_hint: str = "unknown")
     if uptime_ticks and uptime_ticks.isdigit():
         uptime_seconds = int(uptime_ticks) // 100
 
+    # Prefer detected platform vendor over forced "generic" hint so inventory UI
+    # shows mikrotik/eltex/… even when the Generic collector handled the host.
+    if platform != DevicePlatform.UNKNOWN:
+        vendor = platform.value
+    elif vendor_hint and vendor_hint not in {"unknown", "generic"}:
+        vendor = vendor_hint
+    else:
+        vendor = vendor_hint or "unknown"
+
     return InventoryFacts(
         hostname=sys_name,
-        vendor=vendor_hint if vendor_hint != "unknown" else platform.value,
+        vendor=vendor,
         model=model,
         serial=serial,
         firmware=firmware,
