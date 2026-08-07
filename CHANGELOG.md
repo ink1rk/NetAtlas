@@ -2,6 +2,19 @@
 
 All notable changes to NetAtlas are documented in this file.
 
+## [1.3.4] - 2026-08-07
+
+### Fixed — Inventory works everywhere (all vendors / all screens)
+
+- Device upsert no longer lets LLDP stubs / Unknown Device wipe hostname/vendor/model/MAC
+- Interface replace is upsert-by-name (stable IDs) so links/IPAM survive rediscovery
+- Per-target DB rollback after flush errors — one bad host no longer poisons the whole scan
+- Generic SNMP with real `sysDescr`/sysName/IF-MIB is kept (not discarded as “no signal”)
+- Vendor comes from platform fingerprint, not forced `generic`
+- Proxmox no longer writes IP into MAC column; UniFi `native_vlan` is int-only
+- Topology graph exposes model/MAC/interface_count; devices table shows MAC; NOC shows speed_bps
+- NOC surfaces API load errors instead of silently showing an empty estate
+
 ## [1.3.3] - 2026-08-07
 
 ### Fixed — Metrics crash blocked all SNMP enrichment

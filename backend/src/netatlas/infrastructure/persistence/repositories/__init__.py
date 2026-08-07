@@ -19,12 +19,28 @@ from netatlas.infrastructure.persistence.models import (
     DiscoverySeedModel,
     FdbEntryModel,
     InterfaceModel,
+    IpAddressModel,
     LinkModel,
     LldpNeighborModel,
     RouteModel,
     SnapshotModel,
     VlanModel,
 )
+
+
+_EMPTY_IDENTITY = frozenset({"", "unknown", "unknown device", "generic", "none"})
+
+
+def _prefer_str(new: str | None, old: str | None, *, empty: tuple[str, ...] | frozenset[str] = _EMPTY_IDENTITY) -> str:
+    """Keep the richer of two identity strings (never overwrite good data with stubs)."""
+    new_s = (new or "").strip()
+    old_s = (old or "").strip()
+    if not new_s or new_s.lower() in empty:
+        return old_s or new_s
+    if not old_s or old_s.lower() in empty:
+        return new_s
+    # Prefer non-IP hostname over bare IP when both look set
+    return new_s
 
 
 def _device_from_model(m: DeviceModel) -> Device:
@@ -128,18 +144,43 @@ class SqlAlchemyDeviceRepository:
             existing = DeviceModel(id=device.id or uuid4())
             existing.first_seen_at = now
             self._session.add(existing)
-        existing.hostname = device.hostname
-        existing.vendor = device.vendor
-        existing.model = device.model
-        existing.serial = device.serial
-        existing.firmware = device.firmware
-        existing.os_version = device.os_version
-        existing.management_ip = device.management_ip
-        existing.management_mac = device.management_mac
-        existing.platform = device.platform.value
-        existing.status = device.status.value
+            existing.hostname = device.hostname
+            existing.vendor = device.vendor
+            existing.model = device.model
+            existing.serial = device.serial
+            existing.firmware = device.firmware
+            existing.os_version = device.os_version
+            existing.management_ip = device.management_ip
+            existing.management_mac = device.management_mac
+            existing.platform = device.platform.value
+            existing.status = device.status.value
+            existing.attributes = device.attributes or {}
+        else:
+            # Never let LLDP stubs / Unknown Device wipe a richer inventory.
+            existing.hostname = _prefer_str(device.hostname, existing.hostname)
+            existing.vendor = _prefer_str(device.vendor, existing.vendor, empty=("unknown", "generic", ""))
+            existing.model = _prefer_str(
+                device.model, existing.model, empty=("unknown", "unknown device", "")
+            )
+            existing.serial = device.serial or existing.serial
+            existing.firmware = device.firmware or existing.firmware
+            existing.os_version = device.os_version or existing.os_version
+            existing.management_ip = device.management_ip or existing.management_ip
+            existing.management_mac = device.management_mac or existing.management_mac
+            new_plat = device.platform.value if hasattr(device.platform, "value") else str(device.platform)
+            if new_plat and new_plat != "unknown":
+                existing.platform = new_plat
+            new_status = device.status.value if hasattr(device.status, "value") else str(device.status)
+            if new_status and new_status != "unknown":
+                existing.status = new_status
+            merged_attrs = dict(existing.attributes or {})
+            incoming = dict(device.attributes or {})
+            # Drop auto_classified once we have a real inventory signal.
+            if incoming and not incoming.get("auto_classified"):
+                merged_attrs.pop("auto_classified", None)
+            merged_attrs.update(incoming)
+            existing.attributes = merged_attrs
         existing.last_seen_at = now
-        existing.attributes = device.attributes
         await self._session.flush()
         return _device_from_model(existing)
 
@@ -181,27 +222,48 @@ class SqlAlchemyInterfaceRepository:
         ]
 
     async def replace_for_device(self, device_id: UUID, interfaces: list[Interface]) -> None:
-        await self._session.execute(delete(InterfaceModel).where(InterfaceModel.device_id == device_id))
+        """Upsert interfaces by name — keep stable IDs so links/IPAM FKs survive rediscovery."""
+        existing_rows = (
+            await self._session.execute(
+                select(InterfaceModel).where(InterfaceModel.device_id == device_id)
+            )
+        ).scalars().all()
+        by_name = {r.name: r for r in existing_rows}
+        keep: set[str] = set()
         for iface in interfaces:
-            self._session.add(
-                InterfaceModel(
-                    id=iface.id,
-                    device_id=device_id,
-                    name=iface.name,
-                    if_index=iface.if_index,
-                    description=iface.description,
-                    mac=iface.mac,
-                    mtu=iface.mtu,
-                    duplex=iface.duplex,
-                    speed_bps=iface.speed_bps,
-                    poe_enabled=iface.poe_enabled,
-                    admin_status=iface.admin_status,
-                    oper_status=iface.oper_status,
-                    is_trunk=iface.is_trunk,
-                    native_vlan=iface.native_vlan,
-                    lacp_group=iface.lacp_group,
-                    attributes=iface.attributes,
-                )
+            if not iface.name:
+                continue
+            keep.add(iface.name)
+            row = by_name.get(iface.name)
+            if row is None:
+                row = InterfaceModel(id=iface.id or uuid4(), device_id=device_id, name=iface.name)
+                self._session.add(row)
+                by_name[iface.name] = row
+            row.if_index = iface.if_index
+            row.description = iface.description
+            row.mac = iface.mac
+            row.mtu = iface.mtu
+            row.duplex = iface.duplex
+            row.speed_bps = iface.speed_bps
+            row.poe_enabled = iface.poe_enabled
+            row.admin_status = iface.admin_status
+            row.oper_status = iface.oper_status
+            row.is_trunk = iface.is_trunk
+            row.native_vlan = iface.native_vlan
+            row.lacp_group = iface.lacp_group
+            row.attributes = iface.attributes or {}
+            # Expose stable id back to caller (link materialization)
+            iface.id = row.id
+        # Remove interfaces that disappeared — clear IPAM FKs first (no ON DELETE).
+        stale_ids = [r.id for name, r in by_name.items() if name not in keep]
+        if stale_ids:
+            await self._session.execute(
+                IpAddressModel.__table__.update()
+                .where(IpAddressModel.interface_id.in_(stale_ids))
+                .values(interface_id=None)
+            )
+            await self._session.execute(
+                delete(InterfaceModel).where(InterfaceModel.id.in_(stale_ids))
             )
         await self._session.flush()
 

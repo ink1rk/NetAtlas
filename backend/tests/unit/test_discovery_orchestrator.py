@@ -417,6 +417,21 @@ def test_is_generic_signal() -> None:
     )
     assert _is_generic_signal(generic) is True
 
+    # Generic collector + real sysDescr must NOT be discarded
+    snmp_ok = InventoryFacts(
+        hostname="1.2.3.4",
+        vendor="generic",
+        model="unknown",
+        serial=None,
+        firmware=None,
+        os_version="RouterOS CRS354-48P-4S+2Q+",
+        management_mac=None,
+        platform=DevicePlatform.UNKNOWN,
+        attributes={"sys_descr": "RouterOS CRS354-48P-4S+2Q+"},
+        interfaces=[],
+    )
+    assert _is_generic_signal(snmp_ok) is False
+
     with_signal = InventoryFacts(
         hostname="sw1",
         vendor="eltex",

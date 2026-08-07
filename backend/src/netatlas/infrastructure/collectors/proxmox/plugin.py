@@ -160,7 +160,7 @@ class ProxmoxCollector:
                         "name": row.get("iface") or row.get("name"),
                         "if_index": None,
                         "description": row.get("type"),
-                        "mac": (row.get("address") if row.get("type") == "ether" else None),
+                        "mac": row.get("mac") or row.get("hwaddr") or row.get("hw-address"),
                         "mtu": row.get("mtu"),
                         "speed_bps": None,
                         "admin_status": "down" if row.get("disabled") else "up",

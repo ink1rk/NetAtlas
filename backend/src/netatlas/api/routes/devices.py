@@ -498,6 +498,7 @@ async def search(
                 "model": d.model,
                 "serial": d.serial,
                 "management_ip": str(d.management_ip) if d.management_ip else None,
+                "management_mac": str(d.management_mac) if d.management_mac else None,
                 "platform": d.platform,
                 "status": d.status,
                 "network_role": getattr(d, "network_role", None),

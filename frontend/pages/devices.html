@@ -158,7 +158,7 @@
           <div class="table-scroll d-none d-xl-block">
             <table class="data-table"><thead><tr>
               <th>${I18n.t('common.hostname')}</th><th>${I18n.t('common.vendor')}</th><th>${I18n.t('common.model')}</th><th>${I18n.t('devices.platform')}</th>
-              <th>${I18n.t('devices.mgmt_ip')}</th><th>${I18n.t('devices.os')}</th><th>${I18n.t('common.status')}</th><th>${I18n.t('devices.last_seen')}</th>
+              <th>${I18n.t('devices.mgmt_ip')}</th><th>MAC</th><th>${I18n.t('devices.os')}</th><th>${I18n.t('common.status')}</th><th>${I18n.t('devices.last_seen')}</th>
             </tr></thead>
             <tbody>${data.items.map(d => `<tr style="cursor:pointer" onclick="location.href='/pages/device-detail.html?id=${d.id}'">
               <td><strong>${Ui.highlight(d.hostname, q)}</strong></td>
@@ -166,7 +166,8 @@
               <td>${App.escapeHtml(d.model)}</td>
               <td class="mono">${App.escapeHtml(d.platform)}</td>
               <td class="mono">${Ui.highlight(d.management_ip, q)}</td>
-              <td class="mono">${App.escapeHtml(d.os_version || d.firmware)}</td>
+              <td class="mono">${App.escapeHtml(d.management_mac || '—')}</td>
+              <td class="mono">${App.escapeHtml(d.os_version || d.firmware || '—')}</td>
               <td>${App.statusBadge(d.status)}</td>
               <td>${App.formatDate(d.last_seen_at)}</td>
             </tr>`).join('')}</tbody></table>

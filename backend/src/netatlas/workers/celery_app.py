@@ -110,14 +110,22 @@ async def _run_discovery(job_id: UUID) -> dict[str, Any]:
             profile_ids = await discovery_profile_ids(session, seeds, include_global_snmp=True)
             return await load_profile_candidates(session, vault, profile_ids, default_snmp=True)
 
-        async def on_device(device: Any, seeds: list[Any]) -> None:
-            # Bind every profile we tried (seed + global SNMP) so metrics/rediscovery work.
+        async def on_device(
+            device: Any, seeds: list[Any], verified_profile_id: str | None = None
+        ) -> None:
+            # Prefer the SNMP profile that answered; else bind seed + global SNMP profiles.
+            if verified_profile_id:
+                await bind_device_credentials(session, device.id, [UUID(str(verified_profile_id))])
+                return
             profile_ids = await discovery_profile_ids(session, seeds, include_global_snmp=True)
             await bind_device_credentials(session, device.id, profile_ids)
 
         async def progress_callback(_jid: UUID, _payload: dict[str, Any]) -> None:
             # Commit mid-run so API/UI see progress and cancel flags
             await session.commit()
+
+        async def session_rollback() -> None:
+            await session.rollback()
 
         orch = DiscoveryOrchestrator(
             jobs=SqlAlchemyDiscoveryJobRepository(session),
@@ -136,6 +144,7 @@ async def _run_discovery(job_id: UUID) -> dict[str, Any]:
             arp=SqlAlchemyArpRepository(session),
             vlans=SqlAlchemyVlanRepository(session),
             routes=SqlAlchemyRouteRepository(session),
+            session_rollback=session_rollback,
         )
         job = await orch.run(job_id)
         await session.commit()

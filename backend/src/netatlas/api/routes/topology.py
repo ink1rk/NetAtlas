@@ -124,14 +124,23 @@ async def topology_graph(
         for i in interfaces
     }
     interfaces_models_by_id = {str(i.id): i for i in interfaces}
+    iface_count_by_device: dict[str, int] = {}
+    for i in interfaces:
+        key = str(i.device_id)
+        iface_count_by_device[key] = iface_count_by_device.get(key, 0) + 1
     device_dicts = [
         {
             "id": str(d.id),
             "hostname": d.hostname,
             "management_ip": str(d.management_ip) if d.management_ip else None,
+            "management_mac": str(d.management_mac) if d.management_mac else None,
             "platform": d.platform,
             "vendor": d.vendor,
+            "model": d.model,
+            "serial": d.serial,
+            "os_version": d.os_version or d.firmware,
             "status": d.status,
+            "interface_count": iface_count_by_device.get(str(d.id), 0),
             "network_role": getattr(d, "network_role", None) or "unknown",
             "role_confidence": float(getattr(d, "role_confidence", 0) or 0),
             "role": getattr(d, "network_role", None) or "unknown",
