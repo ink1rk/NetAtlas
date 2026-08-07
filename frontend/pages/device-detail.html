@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=inv1">
-  <link rel="stylesheet" href="/css/discovery.css?v=inv1">
+  <link rel="stylesheet" href="/css/app.css?v=mon1">
+  <link rel="stylesheet" href="/css/discovery.css?v=mon1">
   <script>
     try {
       var t = localStorage.getItem('netatlas_theme');
@@ -22,12 +22,12 @@
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
   <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
-  <script src="/js/i18n.js?v=inv1"></script>
-  <script src="/js/api.js?v=inv1"></script>
-  <script src="/js/auth.js?v=inv1"></script>
-  <script src="/js/charts.js?v=inv1"></script>
-  <script src="/js/ui.js?v=inv1"></script>
-  <script src="/js/app.js?v=inv1"></script>
+  <script src="/js/i18n.js?v=mon1"></script>
+  <script src="/js/api.js?v=mon1"></script>
+  <script src="/js/auth.js?v=mon1"></script>
+  <script src="/js/charts.js?v=mon1"></script>
+  <script src="/js/ui.js?v=mon1"></script>
+  <script src="/js/app.js?v=mon1"></script>
   <script>
     const deviceId = App.queryParam('id');
     if (!deviceId) window.location.href = '/pages/devices.html';
@@ -110,7 +110,11 @@
             <td>${App.escapeHtml(n.protocol || 'LLDP')}</td>
           </tr>`).join('')}</tbody></table>`;
         } else if (tab === 'metrics') {
-          const metrics = await Api.getDeviceMetrics(deviceId);
+          const from = new Date(Date.now() - 24 * 3600e3).toISOString();
+          const [metrics, pollLogs] = await Promise.all([
+            Api.getDeviceMetrics(deviceId, { from, limit: 1500, keys: 'cpu_percent,memory_percent,temperature_c,if_in_bps,if_out_bps' }),
+            Api.getDevicePollLogs(deviceId, { limit: 20 }).catch(() => ({ items: [] })),
+          ]);
           const history = metrics.history || metrics.items || [];
           const latest = metrics.latest || history[history.length - 1];
           if (!history.length) {
@@ -125,23 +129,54 @@
             });
             return;
           }
+          const uptime = latest?.uptime_seconds ?? latest?.extras?.uptime_seconds;
           content.innerHTML = `
             <div class="row g-2 mb-3">
-              <div class="col-md-3"><div class="stat-block"><div class="stat-value">${latest?.cpu_percent ?? '—'}</div><div class="stat-label">CPU %</div></div></div>
-              <div class="col-md-3"><div class="stat-block"><div class="stat-value">${latest?.memory_percent ?? '—'}</div><div class="stat-label">Memory %</div></div></div>
-              <div class="col-md-3"><div class="stat-block"><div class="stat-value">${latest?.extras?.interfaces_down ?? '—'}</div><div class="stat-label">IF down</div></div></div>
-              <div class="col-md-3"><div class="stat-block"><div class="stat-value">${latest?.extras?.uptime_seconds ?? '—'}</div><div class="stat-label">Uptime s</div></div></div>
+              <div class="col-md-2"><div class="stat-block"><div class="stat-value">${latest?.cpu_percent ?? '—'}</div><div class="stat-label">CPU %</div></div></div>
+              <div class="col-md-2"><div class="stat-block"><div class="stat-value">${latest?.memory_percent ?? '—'}</div><div class="stat-label">Memory %</div></div></div>
+              <div class="col-md-2"><div class="stat-block"><div class="stat-value">${latest?.temperature_c ?? '—'}</div><div class="stat-label">${I18n.t('mon.temp')}</div></div></div>
+              <div class="col-md-2"><div class="stat-block"><div class="stat-value">${latest?.interfaces_down ?? latest?.extras?.interfaces_down ?? '—'}</div><div class="stat-label">IF down</div></div></div>
+              <div class="col-md-2"><div class="stat-block"><div class="stat-value">${latest?.if_in_errors ?? latest?.extras?.if_in_errors ?? '—'}</div><div class="stat-label">IF err in</div></div></div>
+              <div class="col-md-2"><div class="stat-block"><div class="stat-value">${uptime ?? '—'}</div><div class="stat-label">Uptime s</div></div></div>
             </div>
-            <div class="chart-wrap tall"><canvas id="metrics-chart"></canvas></div>
-            <button class="btn-na btn-na-secondary mt-3" id="btn-poll">${I18n.t('cred.collect_now')}</button>
+            <div class="chart-wrap tall mb-3"><canvas id="metrics-chart"></canvas></div>
+            <div class="chart-wrap tall mb-3"><canvas id="metrics-traffic"></canvas></div>
+            <button class="btn-na btn-na-secondary mb-3" id="btn-poll">${I18n.t('cred.collect_now')}</button>
+            <h4 class="mb-2">${I18n.t('mon.poll_log_title')}</h4>
+            <div id="device-poll-logs"></div>
           `;
-          const labels = history.map((h) => App.formatDate(h.timestamp || h.collected_at));
-          const cpu = history.map((h) => h.cpu_percent ?? null);
-          const mem = history.map((h) => h.memory_percent ?? null);
+          const cpuSeries = metrics.series?.cpu_percent || [];
+          const memSeries = metrics.series?.memory_percent || [];
+          const labels = (cpuSeries.length ? cpuSeries : history).map((h) => App.formatDate(h.t || h.timestamp || h.collected_at));
+          const cpu = cpuSeries.length ? cpuSeries.map((p) => p.v) : history.map((h) => h.cpu_percent ?? null);
+          const mem = memSeries.length ? memSeries.map((p) => p.v) : history.map((h) => h.memory_percent ?? null);
+          Charts.destroyAll();
           Charts.lineChart('metrics-chart', labels, [
-            { label: I18n.t('device.cpu'), data: cpu, borderColor: Charts.COLORS.accent, backgroundColor: Charts.COLORS.accentDim, tension: 0.3, fill: true },
-            { label: I18n.t('device.memory'), data: mem, borderColor: Charts.COLORS.info, backgroundColor: Charts.COLORS.infoDim, tension: 0.3, fill: true },
+            { label: I18n.t('device.cpu'), data: cpu, borderColor: Charts.COLORS.accent, backgroundColor: Charts.COLORS.accentDim, tension: 0.3, fill: true, pointRadius: 0 },
+            { label: I18n.t('device.memory'), data: mem, borderColor: Charts.COLORS.info, backgroundColor: Charts.COLORS.infoDim, tension: 0.3, fill: true, pointRadius: 0 },
           ]);
+          const tin = (metrics.series?.if_in_bps || []).map((p) => p.v);
+          const tout = (metrics.series?.if_out_bps || []).map((p) => p.v);
+          const tlabels = (metrics.series?.if_in_bps || metrics.series?.if_out_bps || []).map((p) => App.formatDate(p.t));
+          if (tlabels.length) {
+            Charts.lineChart('metrics-traffic', tlabels, [
+              { label: 'in bps', data: tin, borderColor: Charts.COLORS.success, backgroundColor: Charts.COLORS.successDim, tension: 0.25, fill: true, pointRadius: 0 },
+              { label: 'out bps', data: tout, borderColor: Charts.COLORS.warning, backgroundColor: Charts.COLORS.warningDim, tension: 0.25, fill: true, pointRadius: 0 },
+            ]);
+          }
+          const logsEl = document.getElementById('device-poll-logs');
+          const logs = pollLogs.items || [];
+          logsEl.innerHTML = logs.length
+            ? `<table class="data-table"><thead><tr><th>${I18n.t('mon.started')}</th><th>${I18n.t('mon.status')}</th><th>${I18n.t('mon.phase')}</th><th>${I18n.t('mon.duration')}</th><th>${I18n.t('mon.message')}</th></tr></thead><tbody>
+              ${logs.map((r) => `<tr>
+                <td>${App.formatDate(r.started_at)}</td>
+                <td><span class="badge-status ${r.status === 'ok' ? 'up' : (r.status === 'error' ? 'down' : '')}">${App.escapeHtml(r.status || '—')}</span></td>
+                <td class="mono">${App.escapeHtml(r.phase || '—')}</td>
+                <td class="mono">${r.duration_ms != null ? r.duration_ms + ' ms' : '—'}</td>
+                <td class="msg-cell">${App.escapeHtml(r.message || r.error || '—')}</td>
+              </tr>`).join('')}
+            </tbody></table>`
+            : `<p class="empty-state">${I18n.t('mon.no_poll_logs')}</p>`;
           document.getElementById('btn-poll')?.addEventListener('click', async () => {
             try { await Api.collectMetricsNow(); Ui.toast(I18n.t('cred.collect_ok'), 'ok'); setTimeout(() => loadTab('metrics', el), 2000); }
             catch (err) { Ui.toast(err.message, 'error'); }

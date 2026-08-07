@@ -2,6 +2,19 @@
 
 All notable changes to NetAtlas are documented in this file.
 
+## [1.3.5] - 2026-08-07
+
+### Added — Full monitoring workspace (Zabbix metrics + Prometheus graphs + poll log)
+
+- SNMP collection: temperature (ENTITY-SENSOR / MikroTik), IF discards & octet sums, derived `if_in_bps` / `if_out_bps`
+- Metrics history API: `from` / `to` / `limit` / `keys` + Prometheus-style `series` and per-interface traffic
+- Fleet table: `GET /monitoring/fleet-metrics` (latest sample + last poll status per device)
+- Poll activity log: `metric_poll_logs` table, written on every collect (phase, duration, plugin, errors, sweep summary)
+- APIs: `GET /monitoring/poll-logs`, `GET /devices/{id}/poll-logs`
+- Monitoring UI: Overview · Graphs (time range) · Опрос (poll audit); Collect now + auto-refresh
+- Device detail metrics: 24h history, traffic chart, recent poll log
+- Retention: metrics 14d, poll logs 7d (hourly purge)
+
 ## [1.3.4] - 2026-08-07
 
 ### Fixed — Inventory works everywhere (all vendors / all screens)

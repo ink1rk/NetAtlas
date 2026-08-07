@@ -294,21 +294,21 @@ async def _enrich_device_identity(
 
 async def _collect_metrics() -> dict[str, Any]:
     """Poll SNMP/API metrics; also re-inventory thin Unknown Device stubs."""
+    from datetime import UTC, datetime
     from uuid import uuid4
 
-    from sqlalchemy import select
+    from sqlalchemy import func, select
 
     from netatlas.domain.ports import CollectorContext, DeviceFingerprint
     from netatlas.infrastructure.collectors.base.registry import build_default_registry
     from netatlas.infrastructure.collectors.base.snmp_transport import SnmpTransport
     from netatlas.infrastructure.collectors.base.ssh_transport import SshTransport
-    from sqlalchemy import func
-
     from netatlas.infrastructure.persistence.models import (
         DeviceCredentialModel,
         DeviceMetricModel,
         DeviceModel,
         InterfaceModel,
+        MetricPollLogModel,
     )
     from netatlas.infrastructure.persistence.session import SessionLocal
     from netatlas.infrastructure.security.credential_resolver import (
@@ -322,7 +322,9 @@ async def _collect_metrics() -> dict[str, Any]:
     snmp = SnmpTransport()
     ssh = SshTransport()
     registry = build_default_registry()
-    stats = {"devices": 0, "ok": 0, "errors": 0, "skipped": 0, "enriched": 0}
+    run_id = uuid4()
+    run_started = datetime.now(UTC)
+    stats = {"devices": 0, "ok": 0, "errors": 0, "skipped": 0, "enriched": 0, "run_id": str(run_id)}
 
     async with SessionLocal() as session:
         vault = AesGcmSecretVault(get_settings().master_key_b64.get_secret_value())
@@ -346,10 +348,40 @@ async def _collect_metrics() -> dict[str, Any]:
         }
         devices = (await session.execute(select(DeviceModel).order_by(DeviceModel.hostname))).scalars().all()
         for device in devices:
+            started = datetime.now(UTC)
             if not device.management_ip:
                 stats["skipped"] += 1
+                finished = datetime.now(UTC)
+                session.add(
+                    MetricPollLogModel(
+                        id=uuid4(),
+                        run_id=run_id,
+                        device_id=device.id,
+                        started_at=started,
+                        finished_at=finished,
+                        status="skipped",
+                        phase="skip",
+                        message="No management IP",
+                        duration_ms=int((finished - started).total_seconds() * 1000),
+                        detail={"hostname": device.hostname, "reason": "no_management_ip"},
+                    )
+                )
                 continue
             stats["devices"] += 1
+            poll = MetricPollLogModel(
+                id=uuid4(),
+                run_id=run_id,
+                device_id=device.id,
+                started_at=started,
+                status="ok",
+                phase="collect",
+                detail={
+                    "hostname": device.hostname,
+                    "management_ip": str(device.management_ip),
+                    "platform": device.platform,
+                    "credential_source": "device" if device.id in linked_ids else "global",
+                },
+            )
             try:
                 if device.id in linked_ids:
                     creds = await load_device_credentials(session, vault, device.id, default_snmp=True)
@@ -380,10 +412,13 @@ async def _collect_metrics() -> dict[str, Any]:
 
                 iface_count = iface_counts.get(device.id, 0)
                 needs_enrich = _needs_identity_enrichment(device, interface_count=iface_count)
+                poll.detail["needs_enrichment"] = needs_enrich
+                poll.detail["interface_count_before"] = iface_count
 
                 # Pick first SNMP candidate that answers sysDescr for thin devices.
                 winning_creds = creds
                 if needs_enrich and candidates:
+                    poll.phase = "probe_credentials"
                     for cand in candidates:
                         snmp_c = cand.get("snmp") or {}
                         probe = await snmp.get(
@@ -398,7 +433,10 @@ async def _collect_metrics() -> dict[str, Any]:
                         )
                         if probe:
                             winning_creds = cand
+                            poll.detail["snmp_probe"] = "ok"
                             break
+                    else:
+                        poll.detail["snmp_probe"] = "no_response"
 
                 ctx = CollectorContext(
                     target_ip=str(device.management_ip),
@@ -409,10 +447,13 @@ async def _collect_metrics() -> dict[str, Any]:
                     ssh_exec=ssh_exec,
                 )
 
+                enriched = False
                 if needs_enrich:
+                    poll.phase = "enrich"
                     try:
                         if await _enrich_device_identity(session, device, ctx, registry, snmp=snmp):
                             stats["enriched"] += 1
+                            enriched = True
                             logger.info(
                                 "Enriched device identity ip=%s hostname=%s vendor=%s model=%s",
                                 device.management_ip,
@@ -421,12 +462,14 @@ async def _collect_metrics() -> dict[str, Any]:
                                 device.model,
                             )
                     except Exception as enrich_exc:  # noqa: BLE001
+                        poll.detail["enrich_error"] = str(enrich_exc)[:500]
                         logger.warning(
                             "Identity enrichment failed device=%s: %s",
                             device.hostname or device.id,
                             enrich_exc,
                         )
 
+                poll.phase = "collect_metrics"
                 plugin = registry.resolve(
                     DeviceFingerprint(
                         management_ip=str(device.management_ip),
@@ -434,6 +477,8 @@ async def _collect_metrics() -> dict[str, Any]:
                         sys_object_id=str((device.attributes or {}).get("sys_object_id") or ""),
                     )
                 )
+                plugin_name = getattr(plugin, "vendor", None) or getattr(plugin, "name", None) or type(plugin).__name__
+                poll.detail["plugin"] = str(plugin_name)
                 sample = await plugin.collect_metrics(ctx)
                 extras = dict(getattr(sample, "extras", None) or {})
                 if sample.interface_counters:
@@ -448,10 +493,59 @@ async def _collect_metrics() -> dict[str, Any]:
                         extras=extras,
                     )
                 )
+                now = datetime.now(UTC)
+                device.last_seen_at = now
+                if (device.status or "").lower() in ("unknown", "down", ""):
+                    device.status = "up"
+                poll.metrics_written = 1
+                poll.status = "ok"
+                poll.message = "Metrics stored"
+                poll.phase = "store"
+                poll.detail.update(
+                    {
+                        "enriched": enriched,
+                        "cpu_percent": sample.cpu_percent,
+                        "memory_percent": sample.memory_percent,
+                        "temperature_c": sample.temperature_c,
+                        "uptime_seconds": extras.get("uptime_seconds"),
+                        "interfaces_total": extras.get("interfaces_total"),
+                        "interfaces_down": extras.get("interfaces_down"),
+                        "if_in_errors": extras.get("if_in_errors"),
+                        "if_out_errors": extras.get("if_out_errors"),
+                        "if_counters": len(sample.interface_counters or []),
+                        "temperature_source": extras.get("temperature_source"),
+                    }
+                )
                 stats["ok"] += 1
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Metrics failed device=%s: %s", device.hostname or device.id, exc)
+                poll.status = "error"
+                poll.error = str(exc)[:2000]
+                poll.message = "Collection failed"
+                poll.phase = poll.phase or "collect"
                 stats["errors"] += 1
+            finally:
+                finished = datetime.now(UTC)
+                poll.finished_at = finished
+                poll.duration_ms = int((finished - started).total_seconds() * 1000)
+                session.add(poll)
+
+        run_finished = datetime.now(UTC)
+        session.add(
+            MetricPollLogModel(
+                id=uuid4(),
+                run_id=run_id,
+                device_id=None,
+                started_at=run_started,
+                finished_at=run_finished,
+                status="ok" if stats["errors"] == 0 else ("partial" if stats["ok"] else "error"),
+                phase="sweep",
+                message=f"Sweep finished: ok={stats['ok']} errors={stats['errors']} skipped={stats['skipped']}",
+                metrics_written=stats["ok"],
+                duration_ms=int((run_finished - run_started).total_seconds() * 1000),
+                detail=dict(stats),
+            )
+        )
         await session.commit()
     logger.info("Metrics collection stats=%s", stats)
     return stats
@@ -472,10 +566,32 @@ async def _evaluate_triggers() -> dict[str, Any]:
 
 
 async def _purge_observability() -> dict[str, Any]:
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import delete
+
     from netatlas.infrastructure.observability.ingest import SyslogIngestService
+    from netatlas.infrastructure.persistence.models import DeviceMetricModel, MetricPollLogModel
     from netatlas.infrastructure.persistence.session import SessionLocal
 
     async with SessionLocal() as session:
         deleted = await SyslogIngestService(session, get_settings()).purge_expired()
+        now = datetime.now(UTC)
+        metrics_cut = now - timedelta(days=14)
+        logs_cut = now - timedelta(days=7)
+        metrics_deleted = (
+            await session.execute(
+                delete(DeviceMetricModel).where(DeviceMetricModel.collected_at < metrics_cut)
+            )
+        ).rowcount or 0
+        logs_deleted = (
+            await session.execute(
+                delete(MetricPollLogModel).where(MetricPollLogModel.started_at < logs_cut)
+            )
+        ).rowcount or 0
         await session.commit()
-        return {"deleted_events": deleted}
+        return {
+            "deleted_events": deleted,
+            "deleted_metrics": int(metrics_deleted),
+            "deleted_poll_logs": int(logs_deleted),
+        }

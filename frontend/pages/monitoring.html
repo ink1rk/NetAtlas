@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=inv1">
+  <link rel="stylesheet" href="/css/app.css?v=mon1">
   <script>
     try {
       var t = localStorage.getItem('netatlas_theme');
@@ -17,110 +17,484 @@
       document.documentElement.setAttribute('data-bs-theme', 'dark');
     }
   </script>
-
 </head>
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
   <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
-  <script src="/js/i18n.js?v=inv1"></script>
-  <script src="/js/api.js?v=inv1"></script>
-  <script src="/js/auth.js?v=inv1"></script>
-  <script src="/js/charts.js?v=inv1"></script>
-<script src="/js/ui.js?v=inv1"></script>
-  <script src="/js/app.js?v=inv1"></script>
+  <script src="/js/i18n.js?v=mon1"></script>
+  <script src="/js/api.js?v=mon1"></script>
+  <script src="/js/auth.js?v=mon1"></script>
+  <script src="/js/charts.js?v=mon1"></script>
+  <script src="/js/ui.js?v=mon1"></script>
+  <script src="/js/app.js?v=mon1"></script>
   <script>
     App.initShell('monitoring', 'title.monitoring', async (el) => {
+      let devices = [];
+      let fleet = [];
+      let autoTimer = null;
+      let activeTab = 'overview';
+
+      const RANGE_MS = {
+        '1h': 3600e3,
+        '6h': 6 * 3600e3,
+        '24h': 24 * 3600e3,
+        '7d': 7 * 24 * 3600e3,
+      };
+
+      function fmtUptime(sec) {
+        if (sec == null || sec === '') return '—';
+        const s = Number(sec);
+        if (!Number.isFinite(s) || s < 0) return '—';
+        const d = Math.floor(s / 86400);
+        const h = Math.floor((s % 86400) / 3600);
+        if (d > 0) return `${d}${I18n.t('unit.days')[0] || 'd'} ${h}h`;
+        const m = Math.floor((s % 3600) / 60);
+        return `${h}h ${m}m`;
+      }
+
+      function fmtNum(v, digits = 1) {
+        if (v == null || v === '') return '—';
+        const n = Number(v);
+        if (!Number.isFinite(n)) return '—';
+        return n.toFixed(digits);
+      }
+
+      function fmtBps(v) {
+        if (v == null) return '—';
+        const n = Number(v);
+        if (!Number.isFinite(n)) return '—';
+        if (n >= 1e9) return (n / 1e9).toFixed(2) + ' Gbps';
+        if (n >= 1e6) return (n / 1e6).toFixed(2) + ' Mbps';
+        if (n >= 1e3) return (n / 1e3).toFixed(1) + ' kbps';
+        return n.toFixed(0) + ' bps';
+      }
+
+      function statusBadge(status) {
+        const s = (status || 'unknown').toLowerCase();
+        const cls = s === 'up' || s === 'ok' ? 'up' : (s === 'down' || s === 'error' ? 'down' : '');
+        return `<span class="badge-status ${cls}">${App.escapeHtml(status || '—')}</span>`;
+      }
+
+      function rangeBounds(key) {
+        const ms = RANGE_MS[key] || RANGE_MS['6h'];
+        const to = new Date();
+        const from = new Date(to.getTime() - ms);
+        return { from: from.toISOString(), to: to.toISOString() };
+      }
+
+      function seriesToChart(points) {
+        return {
+          labels: (points || []).map((p) => App.formatDate(p.t)),
+          data: (points || []).map((p) => p.v),
+        };
+      }
+
       el.innerHTML = `
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+          <p class="text-secondary mb-0" style="max-width:42rem">${I18n.t('mon.subtitle')}</p>
+          <div class="inline-form">
+            <button class="btn-na btn-na-primary" id="btn-collect">${I18n.t('cred.collect_now')}</button>
+            <button class="btn-na btn-na-secondary" id="btn-refresh">${I18n.t('common.refresh')}</button>
+          </div>
+        </div>
         <div class="stat-grid" id="sys-stats">
           <div class="stat-block accent"><div class="stat-value" id="health-status">—</div><div class="stat-label">${I18n.t('mon.api_health')}</div></div>
-          <div class="stat-block"><div class="stat-value" id="ready-status">—</div><div class="stat-label">${I18n.t('mon.readiness')}</div></div>
-          <div class="stat-block"><div class="stat-value" id="api-version">—</div><div class="stat-label">${I18n.t('mon.version')}</div></div>
-          <div class="stat-block warning"><div class="stat-value" id="device-up">—</div><div class="stat-label">${I18n.t('mon.devices_up')}</div></div>
+          <div class="stat-block"><div class="stat-value" id="device-up">—</div><div class="stat-label">${I18n.t('mon.devices_up')}</div></div>
+          <div class="stat-block"><div class="stat-value" id="poll-ok">—</div><div class="stat-label">${I18n.t('mon.poll_ok')}</div></div>
+          <div class="stat-block warning"><div class="stat-value" id="poll-err">—</div><div class="stat-label">${I18n.t('mon.poll_errors')}</div></div>
         </div>
-        <div class="row g-3">
-          <div class="col-lg-6">
-            <div class="panel">
-              <div class="panel-header"><h3>${I18n.t('mon.device_health')}</h3></div>
-              <div class="panel-body"><div class="chart-wrap tall"><canvas id="health-chart"></canvas></div></div>
-            </div>
-          </div>
-          <div class="col-lg-6">
-            <div class="panel">
-              <div class="panel-header"><h3>${I18n.t('mon.job_activity')}</h3></div>
-              <div class="panel-body"><div class="chart-wrap tall"><canvas id="jobs-chart"></canvas></div></div>
-            </div>
-          </div>
+        <div class="tab-bar" id="mon-tabs">
+          <button class="tab-btn active" data-tab="overview">${I18n.t('mon.tab_overview')}</button>
+          <button class="tab-btn" data-tab="graphs">${I18n.t('mon.tab_graphs')}</button>
+          <button class="tab-btn" data-tab="poll">${I18n.t('mon.tab_poll')}</button>
         </div>
-        <div class="panel mt-3">
-          <div class="panel-header"><h3>${I18n.t('mon.device_metrics')}</h3></div>
-          <div class="panel-body p-0" id="metrics-table"><p class="empty-state">${I18n.t('common.loading')}</p></div>
-        </div>
+        <div id="mon-panel"></div>
       `;
 
-      try {
-        const [health, ready, devices, jobs] = await Promise.all([
+      const panel = () => document.getElementById('mon-panel');
+
+      async function loadShellStats() {
+        const [health, deviceList, recentLogs] = await Promise.all([
           Api.healthz().catch(() => ({ status: 'error' })),
-          Api.readyz().catch(() => null),
-          Api.listDevices({ page_size: 100 }),
-          Api.listJobs(),
+          Api.listDevices({ page_size: 200 }),
+          Api.listPollLogs({ limit: 200, include_sweeps: false }).catch(() => ({ items: [] })),
         ]);
-
+        devices = deviceList.items || [];
         document.getElementById('health-status').innerHTML = health.status === 'ok'
-          ? '<span class="badge-status up">OK</span>' : `<span class="badge-status down">${I18n.t('mon.error')}</span>`;
-        document.getElementById('ready-status').innerHTML = ready
-          ? `<span class="badge-status up">${I18n.t('mon.ready')}</span>` : `<span class="badge-status down">${I18n.t('mon.not_ready')}</span>`;
-        document.getElementById('api-version').textContent = health.version || '1.0.0';
+          ? '<span class="badge-status up">OK</span>'
+          : `<span class="badge-status down">${I18n.t('mon.error')}</span>`;
+        const upCount = devices.filter((d) => (d.status || '').toLowerCase() === 'up').length;
+        document.getElementById('device-up').textContent = `${upCount}/${deviceList.total ?? devices.length}`;
+        const logs = recentLogs.items || [];
+        const ok = logs.filter((l) => l.status === 'ok').length;
+        const err = logs.filter((l) => l.status === 'error').length;
+        document.getElementById('poll-ok').textContent = String(ok);
+        document.getElementById('poll-err').textContent = String(err);
+      }
 
-        const upCount = (devices.items || []).filter(d => (d.status || '').toLowerCase() === 'up').length;
-        document.getElementById('device-up').textContent = `${upCount}/${devices.total ?? devices.items?.length ?? 0}`;
+      async function renderOverview() {
+        Charts.destroyAll();
+        panel().innerHTML = `<p class="empty-state">${I18n.t('common.loading')}</p>`;
+        const [deviceList, jobs, fleetData] = await Promise.all([
+          Api.listDevices({ page_size: 200 }),
+          Api.listJobs().catch(() => []),
+          Api.fleetMetrics({ limit: 200 }).catch(() => ({ items: [] })),
+        ]);
+        devices = deviceList.items || [];
+        fleet = fleetData.items || [];
 
         const statusCounts = { up: 0, down: 0, unknown: 0 };
-        (devices.items || []).forEach((d) => {
+        devices.forEach((d) => {
           const s = (d.status || 'unknown').toLowerCase();
           if (s === 'up') statusCounts.up++;
           else if (s === 'down') statusCounts.down++;
           else statusCounts.unknown++;
         });
-
-        Charts.doughnutChart('health-chart',
-          [I18n.t('mon.up'), I18n.t('mon.down'), I18n.t('mon.unknown')],
-          [statusCounts.up, statusCounts.down, statusCounts.unknown],
-          [Charts.COLORS.accent, Charts.COLORS.danger, Charts.COLORS.muted]
-        );
-
         const jobStatus = {};
         (jobs || []).forEach((j) => {
           const label = I18n.statusLabel(j.status);
           jobStatus[label] = (jobStatus[label] || 0) + 1;
         });
-        Charts.barChart('jobs-chart',
+
+        panel().innerHTML = `
+          <div class="row g-3 mb-3">
+            <div class="col-lg-6">
+              <div class="panel">
+                <div class="panel-header"><h3>${I18n.t('mon.device_health')}</h3></div>
+                <div class="panel-body"><div class="chart-wrap tall"><canvas id="health-chart"></canvas></div></div>
+              </div>
+            </div>
+            <div class="col-lg-6">
+              <div class="panel">
+                <div class="panel-header"><h3>${I18n.t('mon.job_activity')}</h3></div>
+                <div class="panel-body"><div class="chart-wrap tall"><canvas id="jobs-chart"></canvas></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><h3>${I18n.t('mon.device_metrics')}</h3></div>
+            <div class="panel-body p-0" id="metrics-table"></div>
+          </div>
+        `;
+
+        Charts.doughnutChart(
+          'health-chart',
+          [I18n.t('mon.up'), I18n.t('mon.down'), I18n.t('mon.unknown')],
+          [statusCounts.up, statusCounts.down, statusCounts.unknown],
+          [Charts.COLORS.accent, Charts.COLORS.danger, Charts.COLORS.muted]
+        );
+        Charts.barChart(
+          'jobs-chart',
           Object.keys(jobStatus),
           [{ label: I18n.t('mon.jobs'), data: Object.values(jobStatus), backgroundColor: Charts.COLORS.infoDim, borderColor: Charts.COLORS.info, borderWidth: 1 }],
           { plugins: { legend: { display: false } } }
         );
 
-        const metricsEl = document.getElementById('metrics-table');
-        const sampleDevices = (devices.items || []).slice(0, 8);
-        const metricsRows = await Promise.allSettled(
-          sampleDevices.map(async (d) => ({ device: d, metrics: await Api.getDeviceMetrics(d.id) }))
-        );
-        const rows = metricsRows.filter((r) => r.status === 'fulfilled').map((r) => r.value);
-        if (!rows.length) {
-          metricsEl.innerHTML = `<p class="empty-state">${I18n.t('mon.no_metrics')}</p>`;
-        } else {
-          metricsEl.innerHTML = `<table class="data-table"><thead><tr>
-            <th>${I18n.t('mon.device')}</th><th>${I18n.t('device.cpu')}</th><th>${I18n.t('device.memory')}</th><th>${I18n.t('mon.uptime')}</th><th>${I18n.t('mon.last_polled')}</th>
-          </tr></thead><tbody>${rows.map(({ device, metrics }) => {
-            const latest = metrics.latest || metrics.current || metrics;
+        const tableEl = document.getElementById('metrics-table');
+        if (!fleet.length) {
+          tableEl.innerHTML = `<p class="empty-state p-3">${I18n.t('mon.no_metrics')}</p>`;
+          return;
+        }
+        tableEl.innerHTML = `<table class="data-table"><thead><tr>
+          <th>${I18n.t('mon.device')}</th>
+          <th>IP</th>
+          <th>${I18n.t('mon.status')}</th>
+          <th>${I18n.t('device.cpu')}</th>
+          <th>${I18n.t('device.memory')}</th>
+          <th>${I18n.t('mon.temp')}</th>
+          <th>${I18n.t('mon.if_down')}</th>
+          <th>${I18n.t('mon.errors')}</th>
+          <th>${I18n.t('mon.uptime')}</th>
+          <th>${I18n.t('mon.last_polled')}</th>
+          <th>${I18n.t('mon.poll_status')}</th>
+        </tr></thead><tbody>${fleet.map((row) => {
+          const latest = row.latest || {};
+          const poll = row.last_poll || {};
+          return `<tr>
+            <td><a href="/pages/device-detail.html?id=${row.device_id}">${App.escapeHtml(row.hostname || '—')}</a></td>
+            <td class="mono">${App.escapeHtml(row.management_ip || '—')}</td>
+            <td>${statusBadge(row.status)}</td>
+            <td class="mono">${fmtNum(latest.cpu_percent)}</td>
+            <td class="mono">${fmtNum(latest.memory_percent)}</td>
+            <td class="mono">${latest.temperature_c != null ? fmtNum(latest.temperature_c) + '°' : '—'}</td>
+            <td class="mono">${latest.interfaces_down ?? latest.extras?.interfaces_down ?? '—'}</td>
+            <td class="mono">${latest.if_in_errors ?? latest.extras?.if_in_errors ?? '—'}/${latest.if_out_errors ?? latest.extras?.if_out_errors ?? '—'}</td>
+            <td class="mono">${fmtUptime(latest.uptime_seconds ?? latest.extras?.uptime_seconds)}</td>
+            <td>${App.formatDate(latest.timestamp || latest.collected_at || poll.finished_at)}</td>
+            <td>${statusBadge(poll.status || '—')}</td>
+          </tr>`;
+        }).join('')}</tbody></table>`;
+      }
+
+      async function renderGraphs() {
+        Charts.destroyAll();
+        const deviceOpts = devices.map((d) =>
+          `<option value="${d.id}">${App.escapeHtml(d.hostname || d.management_ip || d.id)}</option>`
+        ).join('');
+        panel().innerHTML = `
+          <div class="filter-bar mb-3">
+            <select class="form-select" id="graph-device" style="max-width:280px">
+              <option value="">${I18n.t('mon.select_device')}</option>
+              ${deviceOpts}
+            </select>
+            <select class="form-select" id="graph-range" style="max-width:140px">
+              <option value="1h">${I18n.t('mon.range_1h')}</option>
+              <option value="6h" selected>${I18n.t('mon.range_6h')}</option>
+              <option value="24h">${I18n.t('mon.range_24h')}</option>
+              <option value="7d">${I18n.t('mon.range_7d')}</option>
+            </select>
+            <button class="btn-na btn-na-secondary" id="graph-load">${I18n.t('mon.load_graphs')}</button>
+          </div>
+          <div id="graph-empty" class="empty-state">${I18n.t('mon.select_device_hint')}</div>
+          <div id="graph-grid" class="row g-3 d-none">
+            <div class="col-lg-6"><div class="panel"><div class="panel-header"><h3>CPU / Memory %</h3></div><div class="panel-body"><div class="chart-wrap tall"><canvas id="chart-cpu"></canvas></div></div></div></div>
+            <div class="col-lg-6"><div class="panel"><div class="panel-header"><h3>${I18n.t('mon.temp')} / ${I18n.t('mon.if_down')}</h3></div><div class="panel-body"><div class="chart-wrap tall"><canvas id="chart-temp"></canvas></div></div></div></div>
+            <div class="col-lg-6"><div class="panel"><div class="panel-header"><h3>${I18n.t('mon.traffic')}</h3></div><div class="panel-body"><div class="chart-wrap tall"><canvas id="chart-traffic"></canvas></div></div></div></div>
+            <div class="col-lg-6"><div class="panel"><div class="panel-header"><h3>${I18n.t('mon.errors')} / discards</h3></div><div class="panel-body"><div class="chart-wrap tall"><canvas id="chart-errors"></canvas></div></div></div></div>
+          </div>
+          <div class="panel mt-3 d-none" id="iface-panel">
+            <div class="panel-header"><h3>${I18n.t('mon.iface_traffic')}</h3></div>
+            <div class="panel-body"><div class="chart-wrap tall"><canvas id="chart-ifaces"></canvas></div></div>
+          </div>
+        `;
+
+        const loadGraphs = async () => {
+          const deviceId = document.getElementById('graph-device').value;
+          if (!deviceId) {
+            Ui.toast(I18n.t('mon.select_device'), 'error');
+            return;
+          }
+          const range = document.getElementById('graph-range').value;
+          const bounds = rangeBounds(range);
+          const data = await Api.getDeviceMetrics(deviceId, {
+            from: bounds.from,
+            to: bounds.to,
+            limit: 2000,
+            keys: 'cpu_percent,memory_percent,temperature_c,interfaces_down,if_in_bps,if_out_bps,if_in_errors,if_out_errors,if_in_discards,if_out_discards',
+          });
+          Charts.destroyAll();
+          document.getElementById('graph-empty').classList.add('d-none');
+          document.getElementById('graph-grid').classList.remove('d-none');
+
+          const cpu = seriesToChart(data.series?.cpu_percent);
+          const mem = seriesToChart(data.series?.memory_percent);
+          Charts.lineChart('chart-cpu', cpu.labels.length ? cpu.labels : mem.labels, [
+            { label: 'CPU %', data: cpu.data, borderColor: Charts.COLORS.accent, backgroundColor: Charts.COLORS.accentDim, tension: 0.25, fill: true, pointRadius: 0 },
+            { label: 'Memory %', data: mem.data, borderColor: Charts.COLORS.info, backgroundColor: Charts.COLORS.infoDim, tension: 0.25, fill: true, pointRadius: 0 },
+          ], {
+            scales: {
+              x: { ticks: { color: Charts.COLORS.text, maxTicksLimit: 8 }, grid: { color: Charts.COLORS.grid } },
+              y: { min: 0, suggestedMax: 100, ticks: { color: Charts.COLORS.text }, grid: { color: Charts.COLORS.grid } },
+            },
+          });
+
+          const temp = seriesToChart(data.series?.temperature_c);
+          const ifDown = seriesToChart(data.series?.interfaces_down);
+          Charts.lineChart('chart-temp', temp.labels.length ? temp.labels : ifDown.labels, [
+            { label: I18n.t('mon.temp') + ' °C', data: temp.data, borderColor: Charts.COLORS.warning, backgroundColor: Charts.COLORS.warningDim, tension: 0.25, fill: true, pointRadius: 0 },
+            { label: I18n.t('mon.if_down'), data: ifDown.data, borderColor: Charts.COLORS.danger, backgroundColor: Charts.COLORS.dangerDim, tension: 0.25, fill: false, pointRadius: 0 },
+          ]);
+
+          const tin = seriesToChart(data.series?.if_in_bps);
+          const tout = seriesToChart(data.series?.if_out_bps);
+          Charts.lineChart('chart-traffic', tin.labels.length ? tin.labels : tout.labels, [
+            { label: 'in bps', data: tin.data, borderColor: Charts.COLORS.success, backgroundColor: Charts.COLORS.successDim, tension: 0.2, fill: true, pointRadius: 0 },
+            { label: 'out bps', data: tout.data, borderColor: Charts.COLORS.info, backgroundColor: Charts.COLORS.infoDim, tension: 0.2, fill: true, pointRadius: 0 },
+          ]);
+
+          const ein = seriesToChart(data.series?.if_in_errors);
+          const eout = seriesToChart(data.series?.if_out_errors);
+          const din = seriesToChart(data.series?.if_in_discards);
+          const dout = seriesToChart(data.series?.if_out_discards);
+          Charts.lineChart('chart-errors', ein.labels.length ? ein.labels : din.labels, [
+            { label: 'in errors', data: ein.data, borderColor: Charts.COLORS.danger, tension: 0.2, fill: false, pointRadius: 0 },
+            { label: 'out errors', data: eout.data, borderColor: Charts.COLORS.warning, tension: 0.2, fill: false, pointRadius: 0 },
+            { label: 'in discards', data: din.data, borderColor: Charts.COLORS.muted, tension: 0.2, fill: false, pointRadius: 0 },
+            { label: 'out discards', data: dout.data, borderColor: Charts.COLORS.info, tension: 0.2, fill: false, pointRadius: 0 },
+          ]);
+
+          const ifaces = data.interfaces || {};
+          const names = Object.keys(ifaces).slice(0, 8);
+          const ifacePanel = document.getElementById('iface-panel');
+          if (names.length) {
+            ifacePanel.classList.remove('d-none');
+            const labels = seriesToChart(ifaces[names[0]].in_bps).labels;
+            const datasets = [];
+            names.forEach((name, idx) => {
+              const colors = [Charts.COLORS.accent, Charts.COLORS.success, Charts.COLORS.warning, Charts.COLORS.info, Charts.COLORS.danger, Charts.COLORS.muted, '#A78BFA', '#F472B6'];
+              datasets.push({
+                label: `${name} in`,
+                data: seriesToChart(ifaces[name].in_bps).data,
+                borderColor: colors[idx % colors.length],
+                tension: 0.2,
+                fill: false,
+                pointRadius: 0,
+              });
+            });
+            Charts.lineChart('chart-ifaces', labels, datasets);
+          } else {
+            ifacePanel.classList.add('d-none');
+          }
+
+          if (!(data.count > 0)) {
+            Ui.toast(I18n.t('mon.no_history'), 'error');
+          }
+        };
+
+        document.getElementById('graph-load').addEventListener('click', () => {
+          loadGraphs().catch((err) => Ui.toast(err.message, 'error'));
+        });
+        if (devices[0]) {
+          document.getElementById('graph-device').value = devices[0].id;
+          loadGraphs().catch(() => {});
+        }
+      }
+
+      async function renderPollLogs() {
+        Charts.destroyAll();
+        panel().innerHTML = `
+          <div class="filter-bar mb-3">
+            <select class="form-select" id="poll-status" style="max-width:160px">
+              <option value="">${I18n.t('mon.all_statuses')}</option>
+              <option value="ok">ok</option>
+              <option value="error">error</option>
+              <option value="skipped">skipped</option>
+              <option value="partial">partial</option>
+            </select>
+            <select class="form-select" id="poll-device" style="max-width:260px">
+              <option value="">${I18n.t('mon.all_devices')}</option>
+              ${devices.map((d) => `<option value="${d.id}">${App.escapeHtml(d.hostname || d.management_ip || d.id)}</option>`).join('')}
+            </select>
+            <label class="form-check d-flex align-items-center gap-2 mb-0 text-secondary">
+              <input type="checkbox" class="form-check-input" id="poll-sweeps" checked>
+              ${I18n.t('mon.include_sweeps')}
+            </label>
+            <button class="btn-na btn-na-secondary" id="poll-reload">${I18n.t('common.refresh')}</button>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><h3>${I18n.t('mon.poll_log_title')}</h3>
+              <span class="text-secondary small" id="poll-hint">${I18n.t('mon.poll_log_hint')}</span>
+            </div>
+            <div class="panel-body p-0" id="poll-table"><p class="empty-state">${I18n.t('common.loading')}</p></div>
+          </div>
+        `;
+
+        const loadLogs = async () => {
+          const params = {
+            limit: 200,
+            include_sweeps: document.getElementById('poll-sweeps').checked,
+          };
+          const st = document.getElementById('poll-status').value;
+          const did = document.getElementById('poll-device').value;
+          if (st) params.status = st;
+          if (did) params.device_id = did;
+          const data = await Api.listPollLogs(params);
+          const items = data.items || [];
+          const elTable = document.getElementById('poll-table');
+          if (!items.length) {
+            elTable.innerHTML = `<p class="empty-state p-3">${I18n.t('mon.no_poll_logs')}</p>`;
+            return;
+          }
+          elTable.innerHTML = `<table class="data-table"><thead><tr>
+            <th>${I18n.t('mon.started')}</th>
+            <th>${I18n.t('mon.device')}</th>
+            <th>${I18n.t('mon.status')}</th>
+            <th>${I18n.t('mon.phase')}</th>
+            <th>${I18n.t('mon.duration')}</th>
+            <th>${I18n.t('mon.message')}</th>
+            <th>CPU</th>
+            <th>Mem</th>
+            <th>${I18n.t('mon.detail')}</th>
+          </tr></thead><tbody>${items.map((row, idx) => {
+            const d = row.detail || {};
+            const detailId = `poll-d-${idx}`;
+            const summary = [
+              d.plugin ? `plugin=${d.plugin}` : null,
+              d.management_ip || null,
+              d.if_counters != null ? `if=${d.if_counters}` : null,
+              d.enriched ? 'enriched' : null,
+              row.error ? row.error.slice(0, 80) : null,
+            ].filter(Boolean).join(' · ');
             return `<tr>
-              <td><a href="/pages/device-detail.html?id=${device.id}">${App.escapeHtml(device.hostname)}</a></td>
-              <td class="mono">${latest.cpu_percent ?? latest.cpu ?? '—'}</td>
-              <td class="mono">${latest.memory_percent ?? latest.memory ?? '—'}</td>
-              <td class="mono">${latest.uptime_seconds ? Math.floor(latest.uptime_seconds / 86400) + ' ' + I18n.t('unit.days') : '—'}</td>
-              <td>${App.formatDate(latest.timestamp || latest.polled_at)}</td>
+              <td>${App.formatDate(row.started_at)}</td>
+              <td>${row.device_id ? `<a href="/pages/device-detail.html?id=${row.device_id}">${App.escapeHtml(row.hostname || '—')}</a>` : `<span class="text-secondary">${App.escapeHtml(row.hostname || '—')}</span>`}</td>
+              <td>${statusBadge(row.status)}</td>
+              <td class="mono">${App.escapeHtml(row.phase || '—')}</td>
+              <td class="mono">${row.duration_ms != null ? row.duration_ms + ' ms' : '—'}</td>
+              <td class="msg-cell" title="${App.escapeHtml(row.message || '')}">${App.escapeHtml(row.message || '—')}</td>
+              <td class="mono">${fmtNum(d.cpu_percent)}</td>
+              <td class="mono">${fmtNum(d.memory_percent)}</td>
+              <td>
+                <button class="btn-na btn-na-secondary btn-sm" type="button" data-toggle="${detailId}">${I18n.t('mon.show')}</button>
+                <pre class="d-none mt-2 small mono poll-detail" id="${detailId}">${App.escapeHtml(JSON.stringify({ ...d, error: row.error, run_id: row.run_id }, null, 2))}</pre>
+                <div class="text-secondary small mt-1">${App.escapeHtml(summary)}</div>
+              </td>
             </tr>`;
           }).join('')}</tbody></table>`;
+
+          elTable.querySelectorAll('[data-toggle]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+              const pre = document.getElementById(btn.dataset.toggle);
+              if (pre) pre.classList.toggle('d-none');
+            });
+          });
+        };
+
+        document.getElementById('poll-reload').addEventListener('click', () => loadLogs().catch((e) => Ui.toast(e.message, 'error')));
+        document.getElementById('poll-status').addEventListener('change', () => loadLogs().catch(() => {}));
+        document.getElementById('poll-device').addEventListener('change', () => loadLogs().catch(() => {}));
+        document.getElementById('poll-sweeps').addEventListener('change', () => loadLogs().catch(() => {}));
+        await loadLogs();
+      }
+
+      async function renderTab(tab) {
+        activeTab = tab;
+        document.querySelectorAll('#mon-tabs .tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+        if (tab === 'overview') await renderOverview();
+        else if (tab === 'graphs') await renderGraphs();
+        else await renderPollLogs();
+      }
+
+      document.getElementById('mon-tabs').addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-tab]');
+        if (!btn) return;
+        renderTab(btn.dataset.tab).catch((err) => App.showError(panel(), err.message));
+      });
+
+      document.getElementById('btn-collect').addEventListener('click', async () => {
+        const btn = document.getElementById('btn-collect');
+        btn.disabled = true;
+        try {
+          const stats = await Api.collectMetricsNow();
+          Ui.toast(`${I18n.t('cred.collect_ok')}: ok=${stats.ok ?? 0}, err=${stats.errors ?? 0}`, 'ok');
+          await loadShellStats();
+          await renderTab(activeTab);
+        } catch (err) {
+          Ui.toast(err.message, 'error');
+        } finally {
+          btn.disabled = false;
         }
+      });
+
+      document.getElementById('btn-refresh').addEventListener('click', async () => {
+        try {
+          await loadShellStats();
+          await renderTab(activeTab);
+        } catch (err) {
+          Ui.toast(err.message, 'error');
+        }
+      });
+
+      try {
+        await loadShellStats();
+        await renderTab('overview');
+        autoTimer = setInterval(() => {
+          if (activeTab === 'poll') {
+            loadShellStats().catch(() => {});
+            renderPollLogs().catch(() => {});
+          }
+        }, 30000);
+        window.addEventListener('beforeunload', () => { if (autoTimer) clearInterval(autoTimer); }, { once: true });
       } catch (err) {
         App.showError(el, err.message);
       }

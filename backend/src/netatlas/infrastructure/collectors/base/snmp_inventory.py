@@ -323,32 +323,125 @@ async def snmp_metrics(ctx: CollectorContext) -> MetricsSample:
         extras["interfaces_down"] = down
     except Exception:
         pass
+    def _sum_walk(rows: list[tuple[str, str]]) -> int:
+        total = 0
+        for _, v in rows:
+            try:
+                total += int(float(v))
+            except ValueError:
+                continue
+        return total
+
     try:
         in_err = await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.14", **params)
         out_err = await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.20", **params)
-
-        def _sum(rows: list[tuple[str, str]]) -> int:
-            total = 0
-            for _, v in rows:
-                try:
-                    total += int(float(v))
-                except ValueError:
-                    continue
-            return total
-
-        extras["if_in_errors"] = _sum(in_err)
-        extras["if_out_errors"] = _sum(out_err)
+        extras["if_in_errors"] = _sum_walk(in_err)
+        extras["if_out_errors"] = _sum_walk(out_err)
+    except Exception:
+        pass
+    try:
+        in_disc = await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.13", **params)
+        out_disc = await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.19", **params)
+        extras["if_in_discards"] = _sum_walk(in_disc)
+        extras["if_out_discards"] = _sum_walk(out_disc)
+    except Exception:
+        pass
+    try:
+        in_oct = await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.10", **params)
+        out_oct = await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.16", **params)
+        extras["if_in_octets"] = _sum_walk(in_oct)
+        extras["if_out_octets"] = _sum_walk(out_oct)
     except Exception:
         pass
 
+    temperature_c = await _snmp_temperature_c(ctx, params, extras)
+
     interface_counters = await snmp_interface_counters(ctx)
+    if interface_counters and "if_in_octets" not in extras:
+        extras["if_in_octets"] = sum(int(c.get("in_octets") or 0) for c in interface_counters)
+        extras["if_out_octets"] = sum(int(c.get("out_octets") or 0) for c in interface_counters)
+    if interface_counters and "if_in_discards" not in extras:
+        extras["if_in_discards"] = sum(int(c.get("in_discards") or 0) for c in interface_counters)
+        extras["if_out_discards"] = sum(int(c.get("out_discards") or 0) for c in interface_counters)
 
     return MetricsSample(
         cpu_percent=cpu_percent,
         memory_percent=memory_percent,
+        temperature_c=temperature_c,
         interface_counters=interface_counters,
         extras=extras,
     )
+
+
+async def _snmp_temperature_c(
+    ctx: CollectorContext,
+    params: dict[str, Any],
+    extras: dict[str, Any],
+) -> float | None:
+    """Best-effort temperature: MikroTik health OIDs, then ENTITY-SENSOR-MIB (°C)."""
+    assert ctx.snmp_get and ctx.snmp_walk
+
+    # MikroTik RouterOS health (processor / board) — often degrees or tenths.
+    for oid, label in (
+        ("1.3.6.1.4.1.14988.1.1.3.10.0", "mikrotik.processor"),
+        ("1.3.6.1.4.1.14988.1.1.3.11.0", "mikrotik.board"),
+    ):
+        try:
+            raw = await ctx.snmp_get(ctx.target_ip, oid, **params)
+            if not raw:
+                continue
+            val = float(raw)
+            if val > 200:
+                val = val / 10.0
+            if 0 < val < 120:
+                extras["temperature_source"] = label
+                return round(val, 1)
+        except Exception:
+            continue
+
+    # ENTITY-SENSOR-MIB: type 8 = celsius
+    try:
+        types = {
+            oid.rsplit(".", 1)[-1]: val
+            for oid, val in await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.99.1.1.1.1", **params)
+        }
+        scales = {
+            oid.rsplit(".", 1)[-1]: val
+            for oid, val in await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.99.1.1.1.2", **params)
+        }
+        precisions = {
+            oid.rsplit(".", 1)[-1]: val
+            for oid, val in await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.99.1.1.1.3", **params)
+        }
+        values = {
+            oid.rsplit(".", 1)[-1]: val
+            for oid, val in await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.99.1.1.1.4", **params)
+        }
+        temps: list[float] = []
+        for idx, typ in types.items():
+            if str(typ).strip() not in ("8",):
+                continue
+            try:
+                raw_v = float(values.get(idx) or 0)
+            except ValueError:
+                continue
+            try:
+                prec = int(float(precisions.get(idx) or 0))
+            except ValueError:
+                prec = 0
+            scale = str(scales.get(idx) or "9").strip()  # 9 = units
+            # entPhySensorScale: 9=units, 8=deci, 7=centi, 6=milli …
+            scale_div = {9: 1.0, 8: 10.0, 7: 100.0, 6: 1000.0}.get(int(float(scale)) if scale.isdigit() else 9, 1.0)
+            val = raw_v / (10**prec if prec > 0 else 1) / scale_div
+            if 0 < val < 120:
+                temps.append(val)
+        if temps:
+            extras["temperature_source"] = "entity-sensor"
+            extras["temperature_sensors"] = len(temps)
+            return round(sum(temps) / len(temps), 1)
+    except Exception:
+        pass
+    return None
 
 
 async def snmp_interface_counters(ctx: CollectorContext) -> list[dict[str, Any]]:

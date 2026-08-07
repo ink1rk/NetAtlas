@@ -72,7 +72,7 @@ Same as `sudo netatlas-update` on an already-installed host. Pulls `main`, rebui
 
 Status: `sudo netatlas-status`
 
-Current release: **1.3.4** (see `VERSION`).
+Current release: **1.3.5** (see `VERSION`).
 
 ## Local development
 
