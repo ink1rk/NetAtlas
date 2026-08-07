@@ -150,7 +150,7 @@ generate_secrets() {
     jwt_private="$(awk 'NF {sub(/\r/, ""); printf "%s\\n",$0;}' "${NETATLAS_HOME}/deploy/certs/jwt_private.pem")"
     jwt_public="$(awk 'NF {sub(/\r/, ""); printf "%s\\n",$0;}' "${NETATLAS_HOME}/deploy/certs/jwt_public.pem")"
     local ver
-    ver="$(tr -d '[:space:]' < "${NETATLAS_HOME}/VERSION" 2>/dev/null || echo "1.3.2")"
+    ver="$(tr -d '[:space:]' < "${NETATLAS_HOME}/VERSION" 2>/dev/null || echo "1.3.3")"
 
     cat > "${env_file}" <<EOF
 NETATLAS_ENVIRONMENT=production

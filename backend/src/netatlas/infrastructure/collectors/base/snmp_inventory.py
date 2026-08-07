@@ -209,9 +209,12 @@ async def snmp_fdb(ctx: CollectorContext) -> list[FdbEntry]:
     ports = dict(await ctx.snmp_walk(ctx.target_ip, SNMP_FDB_PORT, **params))
     entries: list[FdbEntry] = []
     for oid, mac in macs.items():
+        normalized = _normalize_mac(mac)
+        if not normalized:
+            continue
         entries.append(
             FdbEntry(
-                mac=_normalize_mac(mac) or str(mac),
+                mac=normalized,
                 vlan_id=None,
                 interface=str(ports.get(oid) or "?"),
             )
@@ -229,9 +232,12 @@ async def snmp_arp(ctx: CollectorContext) -> list[ArpEntry]:
         parts = oid.split(".")
         if len(parts) < 5:
             continue
+        normalized = _normalize_mac(mac)
+        if not normalized:
+            continue
         ip = ".".join(parts[-4:])
         iface = parts[-5]
-        entries.append(ArpEntry(ip=ip, mac=_normalize_mac(mac) or str(mac), interface=iface))
+        entries.append(ArpEntry(ip=ip, mac=normalized, interface=iface))
     return entries
 
 

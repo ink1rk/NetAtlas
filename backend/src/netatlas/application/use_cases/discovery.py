@@ -281,7 +281,7 @@ class DiscoveryOrchestrator:
                             id=uuid4(),
                             device_id=device.id,
                             name=str(i.get("name")),
-                            if_index=i.get("if_index"),
+                            if_index=str(i["if_index"]) if i.get("if_index") is not None else None,
                             description=i.get("description"),
                             mac=i.get("mac"),
                             mtu=i.get("mtu"),
@@ -298,7 +298,9 @@ class DiscoveryOrchestrator:
                         for i in inventory.interfaces
                         if i.get("name")
                     ]
-                    await self._interfaces.replace_for_device(device.id, ifaces)
+                    # Never wipe a previous good inventory with an empty IF-MIB walk.
+                    if ifaces:
+                        await self._interfaces.replace_for_device(device.id, ifaces)
 
                     neighbors: list[NeighborFact] = []
                     method = DiscoveryMethod.MANUAL_SEED
