@@ -18,7 +18,10 @@ COPY src ./src
 COPY alembic ./alembic
 COPY alembic.ini ./
 
-RUN pip install --upgrade pip && pip install .
+# Enforce pyasn1 pin before/with install — >=0.6.1 breaks pysnmp (silent SNMP failure).
+RUN pip install --upgrade pip \
+    && pip install "pyasn1>=0.4.8,<0.6.1" \
+    && pip install .
 
 EXPOSE 8000
 
