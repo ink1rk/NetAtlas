@@ -464,8 +464,9 @@ const I18n = (() => {
       'mon.message': 'Сообщение',
       'mon.detail': 'Детали',
       'mon.show': 'Показать',
-      'mon.empty_core_metrics': 'CPU/память ещё не собраны. Запустите опрос ещё раз после обновления — для MikroTik нужны OID health / HOST-RESOURCES.',
-      'mon.no_traffic_yet': 'Недостаточно точек для расчёта трафика (нужно ≥2 успешных опроса).',
+      'mon.empty_core_metrics': 'CPU/память не собраны. Если в журнале «SNMP no response» — проверьте community в Учётных данных, /snmp на MikroTik и UDP/161.',
+      'mon.no_traffic_yet': 'Недостаточно точек для расчёта трафика (нужно ≥2 успешных опроса с живым SNMP).',
+      'mon.snmp_dead_hint': 'SNMP не отвечает. Создайте SNMPv2 community (реальную, не только public) → Назначить устройству → Собрать метрики.',
 
       'obs.subtitle': 'Локальный syslog · триггеры · SMTP-алерты · частичный SIEM',
       'obs.triggers': 'Триггеры',
@@ -972,8 +973,9 @@ const I18n = (() => {
       'mon.message': 'Message',
       'mon.detail': 'Detail',
       'mon.show': 'Show',
-      'mon.empty_core_metrics': 'CPU/memory not collected yet. Run Collect again after update — MikroTik needs health / HOST-RESOURCES OIDs.',
-      'mon.no_traffic_yet': 'Not enough samples for traffic rate (need ≥2 successful polls).',
+      'mon.empty_core_metrics': 'CPU/memory not collected. If poll log says «SNMP no response» — check community in Credentials, /snmp on MikroTik, and UDP/161.',
+      'mon.no_traffic_yet': 'Not enough samples for traffic rate (need ≥2 successful polls with live SNMP).',
+      'mon.snmp_dead_hint': 'SNMP is not answering. Create a real SNMPv2 community (not only public) → Assign to device → Collect metrics.',
 
       'obs.subtitle': 'Onboard syslog · triggers · SMTP alerts · partial SIEM',
       'obs.triggers': 'Triggers',

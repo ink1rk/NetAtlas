@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NetAtlas</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/bootstrap.min.css">
-  <link rel="stylesheet" href="/css/app.css?v=mon2">
-  <link rel="stylesheet" href="/css/discovery.css?v=mon2">
+  <link rel="stylesheet" href="/css/app.css?v=mon3">
+  <link rel="stylesheet" href="/css/discovery.css?v=mon3">
   <script>
     try {
       var t = localStorage.getItem('netatlas_theme');
@@ -22,12 +22,12 @@
 <body>
   <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
   <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
-  <script src="/js/i18n.js?v=mon2"></script>
-  <script src="/js/api.js?v=mon2"></script>
-  <script src="/js/auth.js?v=mon2"></script>
-  <script src="/js/charts.js?v=mon2"></script>
-  <script src="/js/ui.js?v=mon2"></script>
-  <script src="/js/app.js?v=mon2"></script>
+  <script src="/js/i18n.js?v=mon3"></script>
+  <script src="/js/api.js?v=mon3"></script>
+  <script src="/js/auth.js?v=mon3"></script>
+  <script src="/js/charts.js?v=mon3"></script>
+  <script src="/js/ui.js?v=mon3"></script>
+  <script src="/js/app.js?v=mon3"></script>
   <script>
     const deviceId = App.queryParam('id');
     if (!deviceId) window.location.href = '/pages/devices.html';
@@ -130,13 +130,18 @@
             return;
           }
           const uptime = latest?.uptime_seconds ?? latest?.extras?.uptime_seconds;
+          const lastPoll = (pollLogs.items || [])[0];
+          const snmpDead = lastPoll && (lastPoll.status === 'error' || /SNMP no response/i.test(lastPoll.message || ''));
+          const ifDown = latest?.interfaces_down ?? latest?.extras?.interfaces_down;
+          const ifErr = latest?.if_in_errors ?? latest?.extras?.if_in_errors;
           content.innerHTML = `
+            ${snmpDead ? `<div class="alert alert-warning py-2 mb-3">${I18n.t('mon.snmp_dead_hint')}</div>` : ''}
             <div class="row g-2 mb-3">
               <div class="col-md-2"><div class="stat-block"><div class="stat-value">${latest?.cpu_percent ?? '—'}</div><div class="stat-label">CPU %</div></div></div>
               <div class="col-md-2"><div class="stat-block"><div class="stat-value">${latest?.memory_percent ?? '—'}</div><div class="stat-label">Memory %</div></div></div>
               <div class="col-md-2"><div class="stat-block"><div class="stat-value">${latest?.temperature_c ?? '—'}</div><div class="stat-label">${I18n.t('mon.temp')}</div></div></div>
-              <div class="col-md-2"><div class="stat-block"><div class="stat-value">${latest?.interfaces_down ?? latest?.extras?.interfaces_down ?? '—'}</div><div class="stat-label">IF down</div></div></div>
-              <div class="col-md-2"><div class="stat-block"><div class="stat-value">${latest?.if_in_errors ?? latest?.extras?.if_in_errors ?? '—'}</div><div class="stat-label">IF err in</div></div></div>
+              <div class="col-md-2"><div class="stat-block"><div class="stat-value">${ifDown != null ? ifDown : '—'}</div><div class="stat-label">IF down</div></div></div>
+              <div class="col-md-2"><div class="stat-block"><div class="stat-value">${ifErr != null ? ifErr : '—'}</div><div class="stat-label">IF err in</div></div></div>
               <div class="col-md-2"><div class="stat-block"><div class="stat-value">${uptime ?? '—'}</div><div class="stat-label">Uptime s</div></div></div>
             </div>
             <div class="chart-wrap tall mb-3"><canvas id="metrics-chart"></canvas></div>

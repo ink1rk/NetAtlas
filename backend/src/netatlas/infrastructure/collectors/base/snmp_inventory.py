@@ -297,6 +297,17 @@ async def snmp_metrics(ctx: CollectorContext) -> MetricsSample:
     params = _cred_snmp(ctx)
     extras: dict[str, Any] = {}
 
+    # Gate: if sysDescr does not answer, do not invent IF error zeros from empty walks.
+    try:
+        alive = await ctx.snmp_get(ctx.target_ip, SNMP_SYS_DESCR, **params)
+    except Exception:
+        alive = None
+    if not alive:
+        extras["snmp_alive"] = False
+        return MetricsSample(extras=extras)
+    extras["snmp_alive"] = True
+    extras["sys_descr"] = str(alive)[:240]
+
     # CPU — average hrProcessorLoad
     cpu_percent: float | None = None
     try:
@@ -381,16 +392,6 @@ async def snmp_metrics(ctx: CollectorContext) -> MetricsSample:
     except Exception:
         pass
 
-    # IF-MIB oper status + error counters (aggregated)
-    try:
-        opers = await ctx.snmp_walk(ctx.target_ip, SNMP_IF_OPER, **params)
-        total = len(opers)
-        down = sum(1 for _, v in opers if str(v).strip() == "2")
-        extras["interfaces_total"] = total
-        extras["interfaces_down"] = down
-    except Exception:
-        pass
-
     def _sum_walk(rows: list[tuple[str, str]]) -> int:
         total = 0
         for _, v in rows:
@@ -400,18 +401,28 @@ async def snmp_metrics(ctx: CollectorContext) -> MetricsSample:
                 continue
         return total
 
+    # IF-MIB — only persist aggregates when the walk actually returned rows.
+    try:
+        opers = await ctx.snmp_walk(ctx.target_ip, SNMP_IF_OPER, **params)
+        if opers:
+            extras["interfaces_total"] = len(opers)
+            extras["interfaces_down"] = sum(1 for _, v in opers if str(v).strip() == "2")
+    except Exception:
+        pass
     try:
         in_err = await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.14", **params)
         out_err = await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.20", **params)
-        extras["if_in_errors"] = _sum_walk(in_err)
-        extras["if_out_errors"] = _sum_walk(out_err)
+        if in_err or out_err:
+            extras["if_in_errors"] = _sum_walk(in_err)
+            extras["if_out_errors"] = _sum_walk(out_err)
     except Exception:
         pass
     try:
         in_disc = await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.13", **params)
         out_disc = await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.19", **params)
-        extras["if_in_discards"] = _sum_walk(in_disc)
-        extras["if_out_discards"] = _sum_walk(out_disc)
+        if in_disc or out_disc:
+            extras["if_in_discards"] = _sum_walk(in_disc)
+            extras["if_out_discards"] = _sum_walk(out_disc)
     except Exception:
         pass
     try:
@@ -421,8 +432,9 @@ async def snmp_metrics(ctx: CollectorContext) -> MetricsSample:
         if not in_oct:
             in_oct = await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.10", **params)
             out_oct = await ctx.snmp_walk(ctx.target_ip, "1.3.6.1.2.1.2.2.1.16", **params)
-        extras["if_in_octets"] = _sum_walk(in_oct)
-        extras["if_out_octets"] = _sum_walk(out_oct)
+        if in_oct or out_oct:
+            extras["if_in_octets"] = _sum_walk(in_oct)
+            extras["if_out_octets"] = _sum_walk(out_oct)
     except Exception:
         pass
 
