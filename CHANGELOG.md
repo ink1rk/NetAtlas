@@ -2,6 +2,16 @@
 
 All notable changes to NetAtlas are documented in this file.
 
+## [1.3.7] - 2026-08-07
+
+### Fixed — “Empty sample” in 20ms was SNMP not answering
+
+- Poll always probes **all** SNMP profiles (device-linked **and** global Credentials), not only on enrich
+- Wrong device-linked community no longer blocks the correct global profile
+- `sysDescr` miss → status **error** with clear message (community / `/snmp` / UDP 161) — no fake IF zeros / flat 0 bps chart
+- Winning profile is auto-bound to the device; live `sys_descr` drives MikroTik plugin selection
+- UI shows an SNMP-dead hint on the Metrics tab when the latest poll failed probe
+
 ## [1.3.6] - 2026-08-07
 
 ### Fixed — Empty “Metrics stored” on MikroTik (CPU/RAM/uptime/interfaces)

@@ -151,6 +151,64 @@ async def _run_discovery(job_id: UUID) -> dict[str, Any]:
         return {"id": str(job.id), "status": job.status.value, "stats": job.stats}
 
 
+class _SnmpProbeFailed(Exception):
+    """Control-flow: SNMP probe failed; poll log already filled."""
+
+
+def _merge_snmp_candidates(
+    primary: list[dict[str, Any]],
+    extra: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Deduped SNMP credential bags — device links first, then global profiles."""
+    seen: set[tuple[Any, ...]] = set()
+    out: list[dict[str, Any]] = []
+    for cand in list(primary or []) + list(extra or []):
+        snmp = cand.get("snmp") or {}
+        key = (
+            int(snmp.get("version") or 2),
+            str(snmp.get("community") or "").lower(),
+            str(snmp.get("username") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(cand)
+    return out
+
+
+async def _probe_snmp_candidates(
+    snmp: Any,
+    host: str,
+    candidates: list[dict[str, Any]],
+    *,
+    timeout: float = 3.0,
+) -> tuple[dict[str, Any] | None, str | None, list[str]]:
+    """Return (winning_creds, sys_descr, tried_labels) for first sysDescr hit."""
+    tried: list[str] = []
+    for cand in candidates:
+        snmp_c = cand.get("snmp") or {}
+        label = (
+            f"v{snmp_c.get('version', 2)}/"
+            f"{snmp_c.get('community') or snmp_c.get('username') or '?'}"
+        )
+        # Never log full secrets beyond community name (communities are shared secrets
+        # but operators need to see which profile answered).
+        tried.append(label)
+        probe = await snmp.get(
+            host,
+            "1.3.6.1.2.1.1.1.0",
+            community=snmp_c.get("community", "public"),
+            version=int(snmp_c.get("version", 2)),
+            timeout=timeout,
+            username=snmp_c.get("username"),
+            auth_key=snmp_c.get("auth_key"),
+            priv_key=snmp_c.get("priv_key"),
+        )
+        if probe:
+            return cand, str(probe)[:500], tried
+    return None, None, tried
+
+
 def _needs_identity_enrichment(device: Any, *, interface_count: int | None = None) -> bool:
     """True when discovery left a thin ICMP-only stub that SNMP can still fill in."""
     vendor = str(getattr(device, "vendor", "") or "").lower()
@@ -330,9 +388,7 @@ async def _collect_metrics() -> dict[str, Any]:
     from netatlas.infrastructure.persistence.session import SessionLocal
     from netatlas.infrastructure.security.credential_resolver import (
         list_snmp_profile_ids,
-        load_device_credentials,
         load_profile_candidates,
-        load_profiles,
     )
     from netatlas.infrastructure.security.vault import AesGcmSecretVault
 
@@ -400,23 +456,29 @@ async def _collect_metrics() -> dict[str, Any]:
                 },
             )
             try:
+                from netatlas.infrastructure.security.credential_resolver import bind_device_credentials
+
+                device_links: list[Any] = []
                 if device.id in linked_ids:
-                    creds = await load_device_credentials(session, vault, device.id, default_snmp=True)
-                    # Rotation bag for enrichment when device has multiple SNMP profiles.
-                    device_links = (
-                        await session.execute(
-                            select(DeviceCredentialModel.credential_profile_id).where(
-                                DeviceCredentialModel.device_id == device.id
+                    device_links = list(
+                        (
+                            await session.execute(
+                                select(DeviceCredentialModel.credential_profile_id).where(
+                                    DeviceCredentialModel.device_id == device.id
+                                )
                             )
-                        )
-                    ).scalars().all()
-                    candidates = await load_profile_candidates(
+                        ).scalars().all()
+                    )
+                    device_candidates = await load_profile_candidates(
                         session, vault, list(device_links), default_snmp=True
                     )
                 else:
-                    # No device link yet — try every SNMP profile from Credentials page.
-                    creds = await load_profiles(session, vault, global_snmp_ids, default_snmp=True)
-                    candidates = global_candidates
+                    device_candidates = []
+                # Always rotate through global SNMP profiles too — a wrong device-linked
+                # community must not block the correct profile from Credentials page.
+                candidates = _merge_snmp_candidates(device_candidates, global_candidates)
+                if not candidates:
+                    candidates = [{"snmp": {"community": "public", "version": 2}}]
 
                 async def snmp_get(host: str, oid: str, **kwargs: Any) -> str | None:
                     return await snmp.get(host, oid, **kwargs)
@@ -431,32 +493,42 @@ async def _collect_metrics() -> dict[str, Any]:
                 needs_enrich = _needs_identity_enrichment(device, interface_count=iface_count)
                 poll.detail["needs_enrichment"] = needs_enrich
                 poll.detail["interface_count_before"] = iface_count
+                poll.detail["credential_source"] = "device" if device.id in linked_ids else "global"
 
-                # Pick first SNMP candidate that answers sysDescr for thin devices.
-                winning_creds = creds
-                if needs_enrich and candidates:
+                # ALWAYS probe — empty 20ms "partial" samples mean SNMP never answered.
+                poll.phase = "probe_credentials"
+                winning_creds, sys_descr_live, tried = await _probe_snmp_candidates(
+                    snmp, str(device.management_ip), candidates, timeout=3.0
+                )
+                poll.detail["snmp_communities_tried"] = tried
+                if not winning_creds or not sys_descr_live:
+                    poll.status = "error"
                     poll.phase = "probe_credentials"
-                    for cand in candidates:
-                        snmp_c = cand.get("snmp") or {}
-                        probe = await snmp.get(
-                            str(device.management_ip),
-                            "1.3.6.1.2.1.1.1.0",
-                            community=snmp_c.get("community", "public"),
-                            version=int(snmp_c.get("version", 2)),
-                            timeout=2.0,
-                            username=snmp_c.get("username"),
-                            auth_key=snmp_c.get("auth_key"),
-                            priv_key=snmp_c.get("priv_key"),
-                        )
-                        if probe:
-                            winning_creds = cand
-                            poll.detail["snmp_probe"] = "ok"
-                            break
-                    else:
-                        poll.detail["snmp_probe"] = "no_response"
+                    poll.message = (
+                        "SNMP no response — check community, /snmp on MikroTik, "
+                        "firewall UDP/161, and Credentials profiles"
+                    )
+                    poll.error = "sysDescr probe failed for all credential candidates"
+                    poll.detail["snmp_probe"] = "no_response"
+                    stats["errors"] += 1
+                    raise _SnmpProbeFailed()
 
-                # CRS / large IF tables need >2s; short timeouts produce empty samples
-                # that still get stored as "ok" with null CPU/memory.
+                poll.detail["snmp_probe"] = "ok"
+                poll.detail["sys_descr"] = sys_descr_live[:240]
+                # Prefer live sysDescr for vendor plugin selection (Unknown Device stubs).
+                attrs = dict(device.attributes or {})
+                attrs["sys_descr"] = sys_descr_live
+                attrs.pop("auto_classified", None)
+                device.attributes = attrs
+                winning_pid = winning_creds.get("_profile_id")
+                if winning_pid:
+                    try:
+                        await bind_device_credentials(session, device.id, [UUID(str(winning_pid))])
+                        poll.detail["bound_credential_profile_id"] = str(winning_pid)
+                    except Exception as bind_exc:  # noqa: BLE001
+                        poll.detail["bind_error"] = str(bind_exc)[:200]
+
+                # CRS / large IF tables need >2s; short timeouts produce empty samples.
                 ctx = CollectorContext(
                     target_ip=str(device.management_ip),
                     credentials=winning_creds,
@@ -492,7 +564,12 @@ async def _collect_metrics() -> dict[str, Any]:
                 plugin = registry.resolve(
                     DeviceFingerprint(
                         management_ip=str(device.management_ip),
-                        sys_descr=str((device.attributes or {}).get("sys_descr") or device.vendor or ""),
+                        sys_descr=str(
+                            (device.attributes or {}).get("sys_descr")
+                            or sys_descr_live
+                            or device.vendor
+                            or ""
+                        ),
                         sys_object_id=str((device.attributes or {}).get("sys_object_id") or ""),
                     )
                 )
@@ -500,6 +577,8 @@ async def _collect_metrics() -> dict[str, Any]:
                 poll.detail["plugin"] = str(plugin_name)
                 sample = await plugin.collect_metrics(ctx)
                 extras = dict(getattr(sample, "extras", None) or {})
+                extras["snmp_alive"] = True
+                extras["sys_descr"] = sys_descr_live[:240]
                 if sample.interface_counters:
                     extras["interface_counters"] = sample.interface_counters
                 session.add(
@@ -527,7 +606,7 @@ async def _collect_metrics() -> dict[str, Any]:
                         extras.get("uptime_seconds"),
                     )
                 )
-                has_if = bool(extras.get("interfaces_total")) or bool(sample.interface_counters)
+                has_if = int(extras.get("interfaces_total") or 0) > 0 or bool(sample.interface_counters)
                 if has_core:
                     poll.status = "ok"
                     poll.message = "Metrics stored"
@@ -538,7 +617,10 @@ async def _collect_metrics() -> dict[str, Any]:
                     stats["ok"] += 1
                 else:
                     poll.status = "partial"
-                    poll.message = "Empty sample — SNMP returned no usable metrics"
+                    poll.message = (
+                        "SNMP alive but no CPU/memory/IF metrics — "
+                        "enable SNMP MIBs / health on device"
+                    )
                     stats["ok"] += 1
                 poll.detail.update(
                     {
@@ -558,6 +640,9 @@ async def _collect_metrics() -> dict[str, Any]:
                         "has_core_metrics": has_core,
                     }
                 )
+            except _SnmpProbeFailed:
+                # poll.status / message / stats["errors"] already set in probe branch
+                pass
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Metrics failed device=%s: %s", device.hostname or device.id, exc)
                 poll.status = "error"
