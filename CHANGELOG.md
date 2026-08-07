@@ -2,6 +2,16 @@
 
 All notable changes to NetAtlas are documented in this file.
 
+## [1.3.2] - 2026-08-07
+
+### Fixed — Install / update path for production servers
+
+- Shared `deploy/common.sh`: unique `NETATLAS_VERSION=<VERSION>-<gitsha>` image tags so every update recreates containers from a fresh build
+- `update.sh` re-execs from the pulled tree (curl|bash always runs the latest script), verifies `healthz` + `readyz` + UI
+- `install.sh` bootstraps postgres/redis/rabbitmq first, then builds the app stack; installs `netatlas-update` / `netatlas-status`
+- API/worker get `NET_RAW`/`NET_ADMIN` for ICMP discovery; privileged ICMP with unprivileged fallback
+- Compose images driven by `${NETATLAS_VERSION}` (no more stale `1.x.0` tags blocking updates)
+
 ## [1.3.1] - 2026-08-06
 
 ### Fixed — SNMP discovery / identity enrichment

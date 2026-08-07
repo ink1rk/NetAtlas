@@ -47,27 +47,32 @@ See [`docs/architecture/09-TARGET_STACK.md`](docs/architecture/09-TARGET_STACK.m
 - [`docs/MAC_TRACE.md`](docs/MAC_TRACE.md)
 - [`docs/VLAN_MODEL.md`](docs/VLAN_MODEL.md)
 
-## Quick install (Ubuntu 22.04 / 24.04)
+## Install (new server, Ubuntu 22.04 / 24.04)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ink1rk/NetAtlas/main/install.sh | sudo bash
 ```
 
-Or from a clone:
+Opens at `https://<server>/`. Login: `admin` — password in `/opt/netatlas/logs/initial_admin_password.txt`.
 
-```bash
-sudo ./install.sh
-```
+After login:
 
-Open `https://<server>/` and sign in as `admin`. The initial password is written to `/opt/netatlas/logs/initial_admin_password.txt`.
+1. **Учётные данные** → create SNMPv2 community (your real community, not only `public`)
+2. **Назначить всем устройствам и сидам**
+3. **Discovery** → add CIDR → Deep scan → Start
+4. If devices stayed unknown: **Собрать метрики / дообогатить сейчас**
 
-## Update existing install
+## Update (every time after we push to main)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ink1rk/NetAtlas/main/update.sh | sudo bash
 ```
 
-Pulls `main`, rebuilds API + frontend, recreates the stack. Current release: **1.3.1**.
+Same as `sudo netatlas-update` on an already-installed host. Pulls `main`, rebuilds images with a unique tag, recreates API/worker/frontend, checks `healthz` + `readyz` + UI. Preserves `.env`, Postgres data, and TLS certs.
+
+Status: `sudo netatlas-status`
+
+Current release: **1.3.2** (see `VERSION`).
 
 ## Local development
 
