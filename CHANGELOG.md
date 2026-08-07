@@ -2,6 +2,17 @@
 
 All notable changes to NetAtlas are documented in this file.
 
+## [1.3.6] - 2026-08-07
+
+### Fixed — Empty “Metrics stored” on MikroTik (CPU/RAM/uptime/interfaces)
+
+- Poll log said `ok / store / Metrics stored` while CPU/Memory/Uptime stayed `—` and charts were blank
+- Root cause: RouterOS RAM is `hrStorageOther` (“main memory”), not `hrStorageRam`; CPU often only on `mtxrHlProcessorLoad` (`.11.0`)
+- Wrong OID map treated MikroTik CPU load OID as temperature
+- SNMP timeout raised 2s → 8s; IF-MIB enrich retries at 12s for large CRS boards
+- Empty/partial samples are logged as `partial` with an honest message
+- Device metrics UI no longer draws empty Chart.js axes; Collect reloads the page so last contact / interfaces refresh
+
 ## [1.3.5] - 2026-08-07
 
 ### Added — Full monitoring workspace (Zabbix metrics + Prometheus graphs + poll log)
