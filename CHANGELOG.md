@@ -2,6 +2,17 @@
 
 All notable changes to NetAtlas are documented in this file.
 
+## [1.3.8] - 2026-08-07
+
+### Fixed — SNMP never left the NetAtlas container (4ms “SNMP no response”)
+
+Root cause was **not** MikroTik: `pyasn1>=0.6.1` broke `pysnmp` (`No module named pyasn1.compat.octets`), so every GET returned `None` in milliseconds. Additionally pysnmp 6 sync `getCmd` returns a **tuple** (code called `next()` on it) and walks must use `bulkWalkCmd`.
+
+- Pin `pyasn1<0.6.1`, require `pysnmp-lextudio>=6.1.2,<7`
+- Rewrite SNMP transport for pysnmp 6 HLAPI
+- Probe log surfaces library errors vs real network timeout
+- Operator hint: MikroTik → **Communities** (read-access, Addresses)
+
 ## [1.3.7] - 2026-08-07
 
 ### Fixed — “Empty sample” in 20ms was SNMP not answering

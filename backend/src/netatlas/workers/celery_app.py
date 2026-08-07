@@ -182,22 +182,28 @@ async def _probe_snmp_candidates(
     candidates: list[dict[str, Any]],
     *,
     timeout: float = 3.0,
-) -> tuple[dict[str, Any] | None, str | None, list[str]]:
-    """Return (winning_creds, sys_descr, tried_labels) for first sysDescr hit."""
+) -> tuple[dict[str, Any] | None, str | None, list[str], str | None]:
+    """Return (winning_creds, sys_descr, tried_labels, last_error) for first sysDescr hit."""
+    from netatlas.infrastructure.collectors.base.snmp_transport import (
+        check_pysnmp,
+        get_last_snmp_error,
+    )
+
+    lib_ok, lib_detail = check_pysnmp()
+    if not lib_ok:
+        return None, None, [], lib_detail
+
     tried: list[str] = []
     for cand in candidates:
         snmp_c = cand.get("snmp") or {}
-        label = (
-            f"v{snmp_c.get('version', 2)}/"
-            f"{snmp_c.get('community') or snmp_c.get('username') or '?'}"
-        )
-        # Never log full secrets beyond community name (communities are shared secrets
-        # but operators need to see which profile answered).
+        community = snmp_c.get("community") or "public"
+        label = f"v{snmp_c.get('version', 2)}/{snmp_c.get('username') or community}"
+        # Never log full secrets beyond community name (operators need to see which answered).
         tried.append(label)
         probe = await snmp.get(
             host,
             "1.3.6.1.2.1.1.1.0",
-            community=snmp_c.get("community", "public"),
+            community=community,
             version=int(snmp_c.get("version", 2)),
             timeout=timeout,
             username=snmp_c.get("username"),
@@ -205,8 +211,8 @@ async def _probe_snmp_candidates(
             priv_key=snmp_c.get("priv_key"),
         )
         if probe:
-            return cand, str(probe)[:500], tried
-    return None, None, tried
+            return cand, str(probe)[:500], tried, None
+    return None, None, tried, get_last_snmp_error()
 
 
 def _needs_identity_enrichment(device: Any, *, interface_count: int | None = None) -> bool:
@@ -495,20 +501,31 @@ async def _collect_metrics() -> dict[str, Any]:
                 poll.detail["interface_count_before"] = iface_count
                 poll.detail["credential_source"] = "device" if device.id in linked_ids else "global"
 
-                # ALWAYS probe — empty 20ms "partial" samples mean SNMP never answered.
+                # ALWAYS probe — empty ~ms samples usually mean broken pysnmp/pyasn1,
+                # not a missing MikroTik community.
                 poll.phase = "probe_credentials"
-                winning_creds, sys_descr_live, tried = await _probe_snmp_candidates(
+                winning_creds, sys_descr_live, tried, probe_err = await _probe_snmp_candidates(
                     snmp, str(device.management_ip), candidates, timeout=3.0
                 )
                 poll.detail["snmp_communities_tried"] = tried
+                if probe_err:
+                    poll.detail["snmp_library_error"] = probe_err
                 if not winning_creds or not sys_descr_live:
                     poll.status = "error"
                     poll.phase = "probe_credentials"
-                    poll.message = (
-                        "SNMP no response — check community, /snmp on MikroTik, "
-                        "firewall UDP/161, and Credentials profiles"
-                    )
-                    poll.error = "sysDescr probe failed for all credential candidates"
+                    if probe_err and "pysnmp" in probe_err.lower():
+                        poll.message = (
+                            "SNMP library broken on NetAtlas server — update to 1.3.8+ "
+                            "(pyasn1/pysnmp). Not a MikroTik setting."
+                        )
+                        poll.error = probe_err
+                    else:
+                        poll.message = (
+                            "SNMP no response — on MikroTik open Communities: "
+                            "read-access=yes, Addresses includes NetAtlas IP (or 0.0.0.0/0); "
+                            "firewall allow UDP/161; Credentials community must match"
+                        )
+                        poll.error = probe_err or "sysDescr probe failed for all credential candidates"
                     poll.detail["snmp_probe"] = "no_response"
                     stats["errors"] += 1
                     raise _SnmpProbeFailed()

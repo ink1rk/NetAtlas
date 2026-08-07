@@ -466,7 +466,7 @@ const I18n = (() => {
       'mon.show': 'Показать',
       'mon.empty_core_metrics': 'CPU/память не собраны. Если в журнале «SNMP no response» — проверьте community в Учётных данных, /snmp на MikroTik и UDP/161.',
       'mon.no_traffic_yet': 'Недостаточно точек для расчёта трафика (нужно ≥2 успешных опроса с живым SNMP).',
-      'mon.snmp_dead_hint': 'SNMP не отвечает. Создайте SNMPv2 community (реальную, не только public) → Назначить устройству → Собрать метрики.',
+      'mon.snmp_dead_hint': 'SNMP не отвечает. 1) Обновите NetAtlas до 1.3.8+. 2) На MikroTik → Communities: read-access=yes, Addresses = IP сервера NetAtlas или 0.0.0.0/0. 3) Community в Учётных данных = имя на MikroTik.',
 
       'obs.subtitle': 'Локальный syslog · триггеры · SMTP-алерты · частичный SIEM',
       'obs.triggers': 'Триггеры',
@@ -975,7 +975,7 @@ const I18n = (() => {
       'mon.show': 'Show',
       'mon.empty_core_metrics': 'CPU/memory not collected. If poll log says «SNMP no response» — check community in Credentials, /snmp on MikroTik, and UDP/161.',
       'mon.no_traffic_yet': 'Not enough samples for traffic rate (need ≥2 successful polls with live SNMP).',
-      'mon.snmp_dead_hint': 'SNMP is not answering. Create a real SNMPv2 community (not only public) → Assign to device → Collect metrics.',
+      'mon.snmp_dead_hint': 'SNMP is not answering. 1) Update NetAtlas to 1.3.8+. 2) MikroTik → Communities: read-access=yes, Addresses = NetAtlas server IP or 0.0.0.0/0. 3) Credentials community must match MikroTik.',
 
       'obs.subtitle': 'Onboard syslog · triggers · SMTP alerts · partial SIEM',
       'obs.triggers': 'Triggers',
